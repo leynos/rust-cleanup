@@ -17,7 +17,7 @@ dev = [
     "pyyaml==6.0.3",
     "types-pyyaml",
     "pyright",
-    "ty==0.0.56",
+    "ty==0.0.99",
     "pytest-timeout",
     "pytest-xdist",
 ]
