@@ -14,6 +14,9 @@ engineering references.
   diagnostics, and scheduled operation.
 - [Example configuration](../examples/config.toml) provides the default roots
   and retention policy in a reusable TOML file.
+- [systemd service](../examples/systemd/rust-cleanup.service) and
+  [timer](../examples/systemd/rust-cleanup.timer) provide deployment examples
+  explained in the user guide.
 - [Developer guide](developers-guide.md) explains the contributor workflow and
   points maintainers to script automation standards.
 - [Documentation style guide](documentation-style-guide.md) defines the

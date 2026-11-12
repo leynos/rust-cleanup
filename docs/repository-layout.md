@@ -20,7 +20,10 @@ installed `rust-cleanup` command.
 `tests/` holds imported unit, property, snapshot, and workflow tests alongside
 existing repository automation tests. `tests/fixtures/rust-cleanup.timer.j2` is
 a copy of the upstream Ansible timer template for opt-in host acceptance tests.
-`scripts/` and `.github/` retain the repository's generated automation.
+`examples/systemd/` contains copyable user service and timer units based on the
+dev-env-rocky deployment; installation and operation are documented in the
+[users' guide](users-guide.md#install-a-systemd-user-timer). `scripts/` and
+`.github/` retain the repository's generated automation.
 
 Import provenance and validation conventions are recorded in the
 [Developers' guide](developers-guide.md#source-import).

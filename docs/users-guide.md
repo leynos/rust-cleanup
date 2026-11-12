@@ -264,19 +264,156 @@ config and state overrides, the runtime-directory value is currently used as
 supplied: provide an absolute, private directory. A competing command using the
 same lock path reports contention and returns 0 without a sweep.
 
-The repository does not install a daemon or production systemd units. Its
-systemd timer file under `tests/fixtures/` is an acceptance-test fixture. To
-use an external scheduler:
+### Install a systemd user timer
 
-- Invoke the installed executable by absolute path as the owning account.
-- Set consistent `HOME`, configuration, state, and runtime-directory values
-  for manual and scheduled runs so they share a lock and policy history.
-- Capture both output streams and distinguish status 3 from an ordinary
-  completed run.
-- Preview the selected roots and policy before enabling real deletions.
+The [service example](../examples/systemd/rust-cleanup.service) and
+[timer example](../examples/systemd/rust-cleanup.timer) follow the
+dev-env-rocky deployment role.[^deployment-role] They run as the owning user,
+with the deployment's five-minute interval and reduced CPU and I/O priority.
+Installing the Python package alone does not install or enable these units.
 
-A dry-run preview is not a reservation: later scheduled runs observe the host
-again and can make different decisions.
+The service assumes the executable is `~/.local/bin/rust-cleanup`. Check
+`uv tool dir --bin` and adjust the example if installation used another
+location. `%h` is systemd's specifier for the user manager's home directory; it
+replaces the absolute home path that Ansible renders.[^systemd-unit]
+
+The example service is:
+
+```ini
+[Unit]
+Description=Clean stale Rust target directories across configured scan roots
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/bin/sh -lc 'exec "%h/.local/bin/rust-cleanup"'
+```
+
+The login shell matches the deployment, and `exec` makes the cleaner the
+service's main process. No positional root or directory-existence guard is
+passed: each invocation resolves the configured root list or the built-in
+defaults. Keep the shell's `HOME` and XDG values consistent with manual runs so
+they share policy history and an invocation lock.
+
+The timer is:
+
+```ini
+[Unit]
+Description=Run rust-cleanup every 5min
+
+[Timer]
+OnActiveSec=5min
+OnUnitActiveSec=5min
+Unit=rust-cleanup.service
+
+[Install]
+WantedBy=timers.target
+```
+
+`OnActiveSec` supplies the first deadline after the timer starts;
+`OnUnitActiveSec` schedules later deadlines relative to the service's last
+activation. These are monotonic deadlines, subject to systemd's timer accuracy,
+not wall-clock appointments or a delay measured from cleanup completion.
+`Persistent=true` is omitted because catch-up persistence applies to
+`OnCalendar` timers.[^systemd-timer]
+
+From the checkout, first preview the same root-selection policy as the service:
+
+```bash
+"$HOME/.local/bin/rust-cleanup" --dry-run --verbose
+```
+
+After reviewing the preview, install the examples and arm the timer. These
+commands enable real cleanup, with the first deadline about five minutes after
+timer activation:
+
+```bash
+install -Dm644 examples/systemd/rust-cleanup.service "$HOME/.config/systemd/user/rust-cleanup.service"
+install -Dm644 examples/systemd/rust-cleanup.timer "$HOME/.config/systemd/user/rust-cleanup.timer"
+systemctl --user daemon-reload
+systemctl --user enable rust-cleanup.timer
+systemctl --user restart rust-cleanup.timer
+```
+
+Use `--user` as the owning account, without `sudo`. The example uses the same
+unit names as the Ansible role: installing it replaces those files if the host
+already has that deployment. On an Ansible-managed host, change the role's
+variables or templates instead of maintaining competing copies. A running user
+manager is required; whether it remains available after logout depends on host
+session and lingering policy. Enabling the timer alone does not establish that
+policy.
+
+### Inspect a scheduled run
+
+Check the deadline, service result, and journal:
+
+```bash
+systemctl --user list-timers --all rust-cleanup.timer
+systemctl --user status rust-cleanup.service rust-cleanup.timer
+journalctl --user -u rust-cleanup.service -n 100 --no-pager
+```
+
+The journal captures both diagnostics and structured events. A successful
+`Type=oneshot` run normally becomes inactive after completing; inspect its
+recorded result and the timer's next deadline. Exit status 3 deliberately
+remains a service failure signalling unresolved pressure. Do not add
+`SuccessExitStatus=3` to hide it. Status 0 can also mean lock contention or
+preserved targets, as described under
+[exit statuses](#read-output-and-exit-statuses).
+
+### Adjust or disable the schedule
+
+Change both timer intervals together to match the deployment's
+`rust_cleanup_timer_interval` setting. After editing either installed unit,
+reload and restart the timer:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart rust-cleanup.timer
+```
+
+Restarting rearms the activation-relative deadline. Check `list-timers` for a
+future deadline after a user-manager restart or a unit update. The Ansible role
+restarts an active timer when its units change, starts a stopped timer, and
+leaves an unchanged active schedule alone; do not restart it on every status
+check.
+
+To bind the service to a specific configuration file, replace its `ExecStart`
+line before installation:
+
+```ini
+ExecStart=/bin/sh -lc 'exec "%h/.local/bin/rust-cleanup" --config "%h/.config/rust-cleanup/config.toml"'
+```
+
+Adjust that path for a custom `XDG_CONFIG_HOME`. This matches the role when
+`rust_cleanup_manage_scan_roots` is enabled: the role passes its resolved
+`rust_cleanup_config_path` and manages only `scan.roots`, preserving retention
+tables. Turning management off leaves the file untouched, so a previously
+managed root list continues to override built-in defaults.
+
+To disable future activations:
+
+```bash
+systemctl --user disable --now rust-cleanup.timer
+```
+
+Stopping the timer does not cancel a cleanup already running. To stop that
+service as well:
+
+```bash
+systemctl --user stop rust-cleanup.service
+```
+
+Cancellation cannot restore deleted output and can interrupt a recursive
+removal partway through. A later dry run or timer activation observes the host
+again rather than replaying the earlier plan. The timer under `tests/fixtures/`
+remains an acceptance-test fixture; use the examples above for installation.
+
+[^deployment-role]: [dev-env-rocky rust_cleanup role](https://github.com/leynos/dev-env-rocky/tree/8dbf0e665127b9cd8b1dda3a0f48a22e6717abdd/ansible/roles/rust_cleanup),
+                    inspected at the pinned revision.
+[^systemd-unit]: [systemd unit specifiers](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#Specifiers).
+[^systemd-timer]: [systemd timer semantics](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html#OnActiveSec=).
 
 ## Troubleshoot a run
 
