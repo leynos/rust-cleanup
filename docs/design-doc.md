@@ -352,6 +352,75 @@ verification does not establish scheduler installation or production host
 behaviour. That boundary remains explicit rather than being inferred from a
 passing host-independent suite.
 
+### 9.1. Planned validation of existing code
+
+[Roadmap step 1.3](roadmap.md#13-establish-a-stronger-verification-baseline-for-existing-cleanup-code)
+adds assurance for the current whole-target implementation before combined
+cleanup changes it. It is planned work, not a claim that CrossHair has already
+checked the code. The inspected baseline has four Hypothesis properties:
+
+| Existing property                                                 | Generated coverage already present                                                      | Limits that inform new work                                                                |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `test_transition_mode_always_produces_a_valid_mode`               | Observation sequences under `DEFAULT_CONFIG`; valid modes and positive cutoffs.         | No generated custom threshold configurations or full hysteresis-semantic oracle.           |
+| `test_selection_is_ordered_deduplicated_and_containment_free`     | Duplicate/nested/disjoint selections from three fixed path shapes; exact outermost set. | No broad canonical-tree, idempotence, or first-declared survivor-order property.           |
+| `test_state_round_trip_preserves_every_generated_identity`        | Valid generated mount/device/mode mappings survive a private save/load round trip.      | No generated malformed-state rejection or partially invalid document property.             |
+| `test_oldest_first_order_is_monotonic_for_many_synthetic_targets` | Unique integer activity times in normal mode on one synthetic filesystem.               | No generated ties, unknown activity, input permutations, or filesystem-isolation property. |
+
+These limits concern generated coverage. Named tests already cover some
+individual boundary, tie, failure, and isolation examples; retain them rather
+than treating them as missing or replacing them with redundant
+generators.[^verification]
+
+**CrossHair scope.** Qualify small, deterministic production predicates first:
+`initial_mode`, `transition_mode`, `mode_cutoff`, `exit_watermark`,
+`is_eligible`, and `is_recovered`. Contract domains must state valid policy
+constraints, finite usage/cutoff ranges, and supported special activity values
+such as the empty-target negative-infinity sentinel. Check threshold
+inclusivity, non-premature critical recovery, selected-mode retention windows,
+unknown/equal-age eligibility, and recovery's usage-failure veto. Do not spend
+symbolic search on live `/proc`, filesystem traversal, advisory locks, or the
+entire sweep. Regex-heavy parsers and broad mixed-type payloads instead start
+with generated examples.
+
+A symbolic contract must reach the actual production predicate; a copied model
+or an impure operation hidden behind a pure-looking wrapper does not validate
+that predicate. CrossHair only analyses code reachable from an active contract.
+Use explicit supported contract syntax or its selected assertion-analysis mode,
+and put search limits in CLI options or source directives rather than an
+unsupported `pyproject.toml` section.[^crosshair-contracts] Verify tool and
+Python 3.14 compatibility before claiming coverage. A failed import,
+unsupported operation, timeout, or inconclusive result remains a recorded gap.
+Preserve any counterexample as a normal regression and use bounded
+`diffbehavior` where a qualified pure refactor must preserve behaviour.
+
+**Hypothesis scope.** Extend existing properties only for new semantics or
+domains. Construct valid custom pressure configurations instead of rejecting
+most generated inputs. Add selection idempotence, survivor order, and
+filesystem-isolation relations alongside the existing ordering and
+outermost-set properties. For current duration, precedence, state-decoding, and
+telemetry boundaries, prefer small built-in strategies with independent or
+metamorphic assertions: unit scaling, higher-precedence override dominance,
+whole-document rejection after an invalid state entry, and bounded event-schema
+preservation. Do not duplicate valid state round trips merely to increase
+property counts.
+
+For whole-target reclamation, begin with bounded generated histories of build,
+lock, activity, usage, and dry-run changes through the existing injected ports.
+Use a rule-based state machine only when cross-step state exposes a gap that a
+simple generated sequence cannot express clearly.[^hypothesis-stateful]
+Exercise the real planner and reclaimer with recording adapters and reset their
+state between examples. Modelled interleavings can check protection, recovery
+stops, and filesystem isolation; they do not reproduce arbitrary OS scheduling.
+Real lock, filesystem, subprocess, and systemd tests remain necessary.
+
+Keep cheap properties in the ordinary pytest gate. Run qualified symbolic
+searches under explicit per-target budgets on demand or for relevant changes,
+with separately recorded scope, versions, contracts, result classifications,
+and exclusions. Do not add CrossHair or a contract library as a runtime
+dependency. Preserve shrunk failures with named examples rather than relying on
+the disposable Hypothesis database. Later artefact work extends this baseline;
+it does not replace current whole-target safety checks with a new model.
+
 ## 10. Rationale and references
 
 | Choice                                                  | Alternative                                          | Reason and consequence                                                                                                       |
@@ -720,6 +789,7 @@ and decision; none is a prerequisite for the requested combined sweep.
 [^telemetry]: [Event validation and diagnostic logging](../rust_cleanup/observability.py)
               and [sweep event boundaries](../rust_cleanup/sweep_telemetry.py).
 [^verification]: [Pressure verification](../tests/test_config_and_pressure.py), [root-selection properties](../tests/test_scan_roots.py), [state round trips](../tests/test_state.py),
+                 [oldest-first properties](../tests/test_pressure_cleanup.py),
                  and [deletion guard contracts](../tests/test_reclamation.py).
 
 [^sweep-time]: [cargo-sweep time selection](https://github.com/holmgr/cargo-sweep/blob/94a7cf012d40d314896c0fa6986132b0a1e931ba/src/fingerprint.rs#L109-L169)
@@ -733,3 +803,9 @@ and decision; none is a prerequisite for the requested combined sweep.
 [^access-times]: [Linux mount access-time options](https://man7.org/linux/man-pages/man8/mount.8.html),
                  including `relatime`, `strictatime`, and `noatime`, consulted
                  2026-11-12.
+
+[^crosshair-contracts]: [CrossHair contract targeting and configuration](https://crosshair.readthedocs.io/en/latest/contracts.html),
+                        consulted 2026-11-12.
+[^hypothesis-stateful]: [Hypothesis stateful testing guidance](https://hypothesis.readthedocs.io/en/latest/stateful.html),
+                        including when ordinary generated sequences suffice,
+                        consulted 2026-11-12.

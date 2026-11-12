@@ -12,9 +12,11 @@ The roadmap follows Goals, Ideas, Steps, and Tasks (GIST). Each phase states a
 falsifiable idea, each step answers a delivery question, and each checkbox is a
 review-sized execution unit. It makes no date commitments. Existing design
 sections 1–10 remain the baseline; this roadmap implements section 11 rather
-than rebuilding already imported functionality. Normal implementation tasks
-include relevant unit and behavioural verification; combination and end-to-end
-suites are separate delivery tasks where they span several boundaries.
+than rebuilding already imported functionality. Step 1.3 separately strengthens
+verification of the existing implementation before refactoring it. Normal
+implementation tasks include relevant unit and behavioural verification;
+combination and end-to-end suites are separate delivery tasks where they span
+several boundaries.
 
 The completed feature runs both strategies in one pass by default. Artefact TTL
 inherits the effective normal, pressure, or critical cleanup TTL unless
@@ -89,6 +91,76 @@ which must be preserved. See design-doc.md §§11.2, 11.6–11.7.
     labelled. Capture planning walks, process snapshots, peak memory, and
     reclamation latency on a synthetic many-agent layout for later comparison.
 
+### 1.3. Establish a stronger verification baseline for existing cleanup code
+
+This step answers which current invariants are already generated, which gaps
+benefit from Hypothesis, and which small pure predicates support useful bounded
+CrossHair searches. It validates the existing whole-target implementation
+before combined-cleanup refactors. See design-doc.md §9.1. These explicit
+baseline assurance tasks span several components; they do not replace the unit
+and behavioural checks required inside later implementation tasks.
+
+- [ ] 1.3.1. Inventory existing property coverage and qualify a reproducible,
+  bounded verification runner on the project's Python baseline.
+
+  - See [design §9.1](design-doc.md#91-planned-validation-of-existing-code).
+  - Success: map each existing `@given` property to its actual assertion and
+    uncovered domain. Qualify and pin compatible CrossHair tooling for Python
+    3.14, choose supported contract syntax and real function targets, and record
+    per-path/per-condition budgets and unsupported cases. Keep cheap Hypothesis
+    properties in ordinary pytest and make symbolic runs separately reproducible;
+    neither a timeout nor an unanalysed target counts as verification.
+- [ ] 1.3.2. Add and search contracts on qualified existing pure cleanup
+  predicates, retaining counterexamples as named regression tests.
+
+  - Requires 1.3.1.
+  - See
+    [design §§5, 6, and 9.1](design-doc.md#91-planned-validation-of-existing-code).
+  - Success: bounded searches exercise critical-mode retention, entry/recovery
+    boundaries, mode cutoffs, unknown/equal-age eligibility, and usage-failure
+    recovery predicates in the actual production functions. Document validated
+    input domains and special timestamps; use `diffbehavior` for subsequent
+    qualified pure refactors. Record unsupported or inconclusive searches as
+    gaps with an explicit generated-test fallback, never as proofs.
+- [ ] 1.3.3. Strengthen existing Hypothesis selection and pressure properties
+  with semantic invariants and the domains they currently omit.
+
+  - Requires 1.3.1.
+  - See
+    [design §§5 and 9.1](design-doc.md#91-planned-validation-of-existing-code).
+  - Success: construct valid custom threshold configurations and observation
+    sequences that check non-premature critical recovery and strict boundary
+    semantics, beyond mode membership. Extend ordering coverage with tied ages,
+    unknown activity, input permutations, and multiple filesystems; assert
+    deterministic ties, eligibility, and isolation. Extend root properties
+    with deeper canonical trees, idempotence, and first-declared survivor order
+    instead of duplicating the existing outermost-set property.
+- [ ] 1.3.4. Add lightweight generated properties for existing configuration,
+  state-decoding, and telemetry validation boundaries lacking broad coverage.
+
+  - Requires 1.3.1.
+  - See
+    [design §§7 and 9.1](design-doc.md#91-planned-validation-of-existing-code).
+  - Success: current `s`/`m`/`h` duration scaling and configuration precedence
+    hold across constructed valid inputs; malformed state entries invalidate a
+    whole document without duplicating the existing valid round trip. Generated
+    field/value combinations exercise telemetry vocabulary, numeric bounds,
+    booleans, non-finite values, and structured-payload rejection. Use independent
+    or metamorphic assertions and preserve named examples and real I/O checks.
+- [ ] 1.3.5. Generate bounded histories against the existing whole-target
+  planner and reclaimer through their injected adapters.
+
+  - Requires 1.3.3 and 1.3.4.
+  - See
+    [design §§6, 8, and 9.1](design-doc.md#91-planned-validation-of-existing-code).
+  - Success: generated changes in build/lock/activity evidence, usage, and
+    dry-run
+    selection preserve protected targets, stop after observed recovery, and keep
+    filesystem outcomes isolated. Use simple generated sequences first and a
+    rule-based state machine only for history-dependent gaps; run real production
+    planner/reclaimer methods with isolated recording ports. Retain shrunk
+    regressions and distinguish modelled interleavings from actual OS races.
+
 ## 2. Preview both cleanup strategies through one command
 
 Idea: if a combined preview can find old groups inside recent targets while
@@ -105,7 +177,7 @@ planner. See design-doc.md §11.4.
 - [ ] 2.1.1. Add the reusable target inventory and adapt whole-target planning
       to
   its legacy-compatible activity projection.
-  - Requires 1.1.2 and 1.2.2.
+  - Requires 1.1.2, 1.2.2, 1.3.2, and 1.3.3.
   - See
     [design §11.4](design-doc.md#114-shared-inventory-and-component-responsibilities).
   - Success: marker exclusion, empty targets, errors, and injected legacy
@@ -128,7 +200,7 @@ implementation gate explicit. See design-doc.md §§11.3, 11.5, 11.8.
 
 - [ ] 2.2.1. Implement artefact configuration and CLI overrides with late TTL
   inheritance and additive day-duration parsing.
-  - Requires 1.1.2 and 2.1.1.
+  - Requires 1.1.2, 1.3.4, and 2.1.1.
   - See
     [design §11.3](design-doc.md#113-retention-policy-and-proposed-configuration)
     and [proposed policy](design/artefact-policy-proposal.toml).
@@ -168,7 +240,7 @@ cleanup. See design-doc.md §11.6.
     earlier locks, and cancellation leaves no lock held or replacement created.
 - [ ] 3.1.2. Implement group revalidation and confined member removal with
   fingerprint metadata removed last.
-  - Requires 3.1.1 and 2.2.2.
+  - Requires 1.3.5, 3.1.1, and 2.2.2.
   - See
     [design §§11.4 and 11.6](design-doc.md#114-shared-inventory-and-component-responsibilities).
   - Success: generated member/path changes fail closed before mutation;
