@@ -1,0 +1,62 @@
+name: Coverage (main)
+
+# CodeScene accepts `cs-coverage upload` only for analysed branches, so
+# main-branch coverage is uploaded here on push; pull requests generate
+# coverage (and, in a future fast-follow, run the changed-line
+# `cs-coverage check` gate) in ci.yml instead. This workflow also
+# advances the coverage ratchet baseline: caches saved on main are
+# readable by every pull-request run, so the baseline written here is the
+# one PR ratchet checks compare against.
+#
+# `workflow_dispatch` is mandatory, not a convenience: merges performed by
+# the automerge workflow's GITHUB_TOKEN do not fire push-event workflows,
+# so automerged changes to main only receive coverage via a manual
+# dispatch.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  coverage-upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN || '' }}
+      CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 || '' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+
+      - name: Generate coverage
+        uses: leynos/shared-actions/.github/actions/generate-coverage@ec1432aa6fa5379b2dd8f4b3402fd5b250a597bd
+        with:
+          output-path: coverage.xml
+          format: cobertura
+          artefact-name-suffix: rust-cleanup
+          publish-artefact: ${{ env.ACT != 'true' }}
+          with-ratchet: 'true'
+
+
+      - name: Upload coverage data to CodeScene
+        if: env.CS_ACCESS_TOKEN != ''
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@18bed1ca49a6de3d8882bd72635a32ae3f023d57
+        with:
+          format: cobertura
+          path: coverage.xml
+          access-token: ${{ env.CS_ACCESS_TOKEN }}
+          installer-checksum: ${{ env.CODESCENE_CLI_SHA256 }}

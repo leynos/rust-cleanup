@@ -1,0 +1,353 @@
+[project]
+name = "rust-cleanup"
+version = "0.1.0"
+description = "rust-cleanup package"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "ISC" }
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "interrogate",
+    "pip-audit",
+    "ruff==0.16.8",
+    "cyclopts==4.25.2",
+    "pyyaml==6.0.3",
+    "types-pyyaml",
+    "pyright",
+    "ty==0.0.56",
+    "pytest-timeout",
+    "pytest-xdist",
+]
+
+[tool.ruff]
+line-length = 88
+preview = true
+target-version = "py314"
+
+[tool.ruff.lint]
+select = [
+    "F",        # Pyflakes rules
+    "W",        # PyCodeStyle warnings
+    "E",        # PyCodeStyle errors
+    "I",        # Sort imports properly
+    "UP",       # Warn if certain things can changed due to newer Python versions
+    "C4",       # Catch incorrect use of comprehensions, dict, list, etc
+    "ISC",      # Good use of string concatenation
+    "ICN",      # Use common import conventions
+    "RET",      # Good return practices
+    "SIM",      # Common simplification rules
+    "TID",      # Some good import practices
+    "TC",       # Enforce importing certain types in a TYPE_CHECKING block
+    "PTH",      # Use pathlib instead of os.path
+    "TD",       # Be diligent with TODO comments
+    "A",        # detect shadowed builtins
+    "BLE",      # disallow catch-all exceptions
+    "S",        # disallow things like "exec"; also restricts "assert" but I just NOQA it when I really need it
+    "DTZ",      # require strict timezone manipulation with datetime
+    "FBT",      # detect boolean traps
+    "N",        # enforce naming conventions, e.g. ClassName vs function_name
+    "FURB",
+    "B",
+    "RUF",
+    "LOG",
+    "Q",
+    "PT",
+    "RSE",
+    "PERF",
+    "TRY",
+    "ASYNC",
+    "D",
+    "DOC",
+    "ANN",
+    "C90",
+    "PLR",
+    "modified-iterating-set",
+    "no-classmethod-decorator",
+    "no-staticmethod-decorator",
+    "too-many-locals",
+    "too-many-boolean-expressions",
+    "too-many-nested-blocks",
+    "non-augmented-assignment",
+    "literal-membership",
+    "no-self-use",
+    "unnecessary-lambda",
+    "none-not-at-end-of-union",
+    "class-with-mixed-type-vars",
+    "unnecessary-regular-expression",
+    "non-octal-permissions",
+    "property-without-return",
+]
+extend-ignore = [
+    "incorrect-blank-line-before-class",  # Conflicts with D211; prefer enforcing no blank line before class docstring.
+    "multi-line-summary-second-line",  # Conflicts with D212; keep summary on the first line.
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["RUF067"]
+"**/test_*.py" = ["S101", "PLR0913", "PLR0917", "PLR2004", "PLR6301"]
+"tests/steps/*.py" = ["S101", "PLR0913", "PLR0917", "PLR2004", "PLR6301"]
+
+[tool.ruff.lint.flake8-import-conventions]
+# Declare the banned `from` imports.
+banned-from = [
+    "typing",
+    "datetime",
+    "collections.abc",
+    "dataclasses",
+    "enum",
+    "unittest.mock",
+    "msgspec",
+]
+
+[tool.ruff.lint.flake8-import-conventions.aliases]
+# Declare the default aliases.
+altair = "alt"
+"matplotlib.pyplot" = "plt"
+numpy = "np"
+pandas = "pd"
+seaborn = "sns"
+scipy = "sp"
+"collections.abc" = "cabc"
+datetime = "dt"
+"unittest.mock" = "mock"
+"msgspec.json" = "msjson"
+typing = "typ"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.AbstractSet".msg = "Use collections.abc.Set instead of deprecated typing generics."
+"typing.AsyncContextManager".msg = "Use contextlib.AbstractAsyncContextManager instead of deprecated typing generics."
+"typing.AsyncGenerator".msg = "Use collections.abc.AsyncGenerator instead of deprecated typing generics."
+"typing.AsyncIterable".msg = "Use collections.abc.AsyncIterable instead of deprecated typing generics."
+"typing.AsyncIterator".msg = "Use collections.abc.AsyncIterator instead of deprecated typing generics."
+"typing.Awaitable".msg = "Use collections.abc.Awaitable instead of deprecated typing generics."
+"typing.Callable".msg = "Use collections.abc.Callable instead of deprecated typing generics."
+"typing.ChainMap".msg = "Use collections.ChainMap instead of deprecated typing generics."
+"typing.Collection".msg = "Use collections.abc.Collection instead of deprecated typing generics."
+"typing.Container".msg = "Use collections.abc.Container instead of deprecated typing generics."
+"typing.ContextManager".msg = "Use contextlib.AbstractContextManager instead of deprecated typing generics."
+"typing.Coroutine".msg = "Use collections.abc.Coroutine instead of deprecated typing generics."
+"typing.Counter".msg = "Use collections.Counter instead of deprecated typing generics."
+"typing.DefaultDict".msg = "Use collections.defaultdict instead of deprecated typing generics."
+"typing.Deque".msg = "Use collections.deque instead of deprecated typing generics."
+"typing.Dict".msg = "Use dict instead of deprecated typing generics."
+"typing.FrozenSet".msg = "Use frozenset instead of deprecated typing generics."
+"typing.Generator".msg = "Use collections.abc.Generator instead of deprecated typing generics."
+"typing.ItemsView".msg = "Use collections.abc.ItemsView instead of deprecated typing generics."
+"typing.Iterable".msg = "Use collections.abc.Iterable instead of deprecated typing generics."
+"typing.Iterator".msg = "Use collections.abc.Iterator instead of deprecated typing generics."
+"typing.KeysView".msg = "Use collections.abc.KeysView instead of deprecated typing generics."
+"typing.List".msg = "Use list instead of deprecated typing generics."
+"typing.Mapping".msg = "Use collections.abc.Mapping instead of deprecated typing generics."
+"typing.Match".msg = "Use re.Match instead of deprecated typing generics."
+"typing.MutableMapping".msg = "Use collections.abc.MutableMapping instead of deprecated typing generics."
+"typing.MutableSequence".msg = "Use collections.abc.MutableSequence instead of deprecated typing generics."
+"typing.MutableSet".msg = "Use collections.abc.MutableSet instead of deprecated typing generics."
+"typing.OrderedDict".msg = "Use collections.OrderedDict instead of deprecated typing generics."
+"typing.Pattern".msg = "Use re.Pattern instead of deprecated typing generics."
+"typing.Reversible".msg = "Use collections.abc.Reversible instead of deprecated typing generics."
+"typing.Sequence".msg = "Use collections.abc.Sequence instead of deprecated typing generics."
+"typing.Set".msg = "Use set instead of deprecated typing generics."
+"typing.Tuple".msg = "Use tuple instead of deprecated typing generics."
+"typing.Type".msg = "Use type instead of deprecated typing generics."
+"typing.ValuesView".msg = "Use collections.abc.ValuesView instead of deprecated typing generics."
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-bool-expr = 2
+max-locals = 10
+
+[tool.pylint.main]
+py-version = "3.14"
+recursive = true
+max-module-lines = 400
+
+[tool.pylint.design]
+max-args = 4
+max-locals = 20
+max-statements = 70
+max-positional-arguments = 4
+
+[tool.pylint."messages control"]
+disable = [
+    "all",
+]
+enable = [
+    # Logging format safety.
+    "logging-format-interpolation",
+    "logging-format-truncated",
+    "logging-fstring-interpolation",
+    "logging-not-lazy",
+    "logging-too-few-args",
+    "logging-too-many-args",
+    "logging-unsupported-format",
+
+    # Pattern matching correctness and readability.
+    "bare-name-capture-pattern",
+    "invalid-match-args-definition",
+    "match-class-bind-self",
+    "match-class-positional-attributes",
+    "multiple-class-sub-patterns",
+    "too-many-positional-sub-patterns",
+
+    # Control-flow simplification.
+    "chained-comparison",
+    "condition-evals-to-constant",
+    "consider-merging-isinstance",
+    "consider-swap-variables",
+    "consider-using-in",
+    "consider-using-max-builtin",
+    "consider-using-min-builtin",
+    "consider-using-sys-exit",
+    "consider-using-ternary",
+    "inconsistent-return-statements",
+    "no-else-break",
+    "no-else-continue",
+    "no-else-raise",
+    "no-else-return",
+    "redefined-argument-from-local",
+    "simplifiable-condition",
+    "simplifiable-if-expression",
+    "simplifiable-if-statement",
+    "simplify-boolean-expression",
+    "stop-iteration-return",
+    "super-with-arguments",
+    "trailing-comma-tuple",
+    "unnecessary-negation",
+    "useless-return",
+
+    # Collection and iterator idioms.
+    "consider-iterating-dictionary",
+    "consider-using-dict-comprehension",
+    "consider-using-dict-items",
+    "consider-using-enumerate",
+    "consider-using-f-string",
+    "consider-using-generator",
+    "consider-using-get",
+    "consider-using-join",
+    "consider-using-set-comprehension",
+    "unnecessary-comprehension",
+    "unnecessary-dict-index-lookup",
+    "unnecessary-list-index-lookup",
+    "use-a-generator",
+    "use-dict-literal",
+    "use-implicit-booleaness-not-comparison",
+    "use-implicit-booleaness-not-comparison-to-string",
+    "use-implicit-booleaness-not-len",
+    "use-list-literal",
+    "use-maxsplit-arg",
+    "use-sequence-for-iteration",
+    "use-yield-from",
+
+    # Runtime APIs, resources, and compatibility hazards.
+    "bad-open-mode",
+    "bad-thread-instantiation",
+    "boolean-datetime",
+    "consider-using-with",
+    "deprecated-argument",
+    "deprecated-attribute",
+    "deprecated-class",
+    "deprecated-decorator",
+    "deprecated-method",
+    "forgotten-debug-statement",
+    "invalid-envvar-default",
+    "invalid-envvar-value",
+    "method-cache-max-size-none",
+    "redundant-unittest-assert",
+    "shallow-copy-environ",
+    "singledispatch-method",
+    "singledispatchmethod-function",
+    "subprocess-popen-preexec-fn",
+    "subprocess-run-check",
+    "unnecessary-dunder-call",
+    "unnecessary-ellipsis",
+    "unspecified-encoding",
+
+    # Source layout and text hygiene.
+    "missing-final-newline",
+    "mixed-line-endings",
+    "superfluous-parens",
+    "trailing-newlines",
+    "trailing-whitespace",
+    "unexpected-line-ending-format",
+
+    # Mutation during iteration.
+    "modified-iterating-dict",
+    "modified-iterating-list",
+    "modified-iterating-set",
+
+    # Structural complexity limits.
+    "too-many-arguments",
+    "too-many-boolean-expressions",
+    "too-many-branches",
+    "too-many-lines",
+    "too-many-locals",
+    "too-many-nested-blocks",
+    "too-many-positional-arguments",
+    "too-many-public-methods",
+    "too-many-statements",
+]
+
+# Scan the checkout so scripts and Python action implementations cannot fall
+# outside the gate. Runtime entry points remain distinct from exceptions.
+[tool.df12_skylos]
+roots = ["."]
+python = "3.14"
+
+[tool.skylos]
+exclude = [".venv", ".uv-cache", ".uv-tools", ".tools", ".git"]
+
+[tool.skylos.gate]
+strict = true
+
+
+
+[tool.nose]
+version = "0.20.0"
+roots = ["."]
+mode = "syntax,semantic,near"
+min-size = 24
+surface = "all"
+top = 0
+exclude = [".venv/**", ".uv-cache/**", ".uv-tools/**", ".tools/**", ".git/**"]
+
+# Skylos treats test-classified paths as entry points, so Vulture supplies
+# dead-helper detection there. Names collected by pytest are entry points;
+# their function bodies and all other definitions remain checked.
+[tool.vulture]
+ignore_names = ["test_*", "pytestmark"]
+min_confidence = 60
+
+[tool.mutmut]
+# mutmut copies the tree before running the suite: tests that read
+# repository-root paths outside tests/ must either add those paths to
+# `also_copy` or guard themselves with a skipif. See the shared-actions
+# caller guide (docs/mutation-mutmut-workflow.md).
+source_paths = ["rust_cleanup/"]
+also_copy = ["scripts/", ".github/", "Makefile", "pyproject.toml"]
+pytest_add_cli_args_test_selection = ["tests/"]
+
+[tool.pytest.ini_options]
+# Tests automatically killed after seconds elapsed
+timeout = 30
+testpaths = ["tests"]
+
+[tool.uv]
+package = true
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rust_cleanup"]
+

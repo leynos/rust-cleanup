@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    env:
+      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
+      CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+        with:
+          persist-credentials: false
+          # Full history so a future `cs-coverage check` can reach the
+          # pull request's merge base (see the deferred gate note below).
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.14'
+
+      - name: Set up Go for Actionlint
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.x'
+          cache: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+      - name: Set up Rust
+        uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
+        with:
+          toolchain: stable
+
+
+      - name: Install CLI tools
+        run: |
+          uv tool install mbake==1.4.6
+          npm install -g markdownlint-cli2@0.22.1
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          npm install -g @action-validator/core@0.6.0 @action-validator/cli@0.6.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Validate Makefile
+        run: mbake validate Makefile
+
+      - name: Install code
+        run: make build
+
+      - name: Install mdtablefix
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@7d751eded578e48dacf43ab173d5820e6437c474
+        with:
+          version: '0.6.1'
+
+      - name: Check formatting
+        run: make check-fmt
+
+      - name: Run source and action lints
+        run: make lint
+
+      - name: Run typechecker
+        run: make typecheck
+
+      - name: Lint Markdown and check repository spelling
+        run: make markdownlint
+
+      # Dependency audits report advisories against the whole lockfile, so a
+      # newly published advisory would fail every Dependabot PR regardless of
+      # content and deadlock auto-merge. The scheduled audit workflow covers
+      # Dependabot merges instead.
+      - name: Audit dependencies
+        if: github.actor != 'dependabot[bot]'
+        run: make audit
+
+      # Coverage runs on pull requests only. Pushes to main upload their
+      # own coverage (and advance the ratchet baseline) via
+      # coverage-main.yml, so generating it here as well would duplicate
+      # the work and the CodeScene upload for the same commit.
+      # The changed-line `cs-coverage check` gate is deliberately not wired
+      # in yet: CodeScene rejects `cs-coverage check` for any project whose
+      # coverage-gates configuration is absent ("Lacks the gates
+      # configuration."), which is a CodeScene-side, per-project setting
+      # rather than a CI defect. Once this repo is onboarded to CodeScene
+
+      # — set the `codescene_project_id` copier answer — and coverage-main.yml
+      # has uploaded to main at least once, add a `mode: check` step guarded
+      # on `CS_ACCESS_TOKEN != ''` with the project's
+      # `project-url: https://api.codescene.io/v2/projects/<id>`.
+
+      - name: Test and Measure Coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: leynos/shared-actions/.github/actions/generate-coverage@ec1432aa6fa5379b2dd8f4b3402fd5b250a597bd
+        with:
+          output-path: coverage.xml
+          format: cobertura
+          artefact-name-suffix: rust-cleanup
+          publish-artefact: ${{ env.ACT != 'true' }}
+          with-ratchet: 'true'

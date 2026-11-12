@@ -1,0 +1,24 @@
+# Repository-specific identifiers, quotations and deliberate fixtures.
+
+schema = 1
+
+[oxford]
+stems = []
+
+[words]
+accepted = []
+
+[words.corrections]
+
+[patterns]
+ignore = [
+  # Inline code spans were masked by the previous dictionary snapshot; kept
+  # until the shared dictionary rules on it.
+  '`[^`\n]+`',
+  # External environment variables retain their published spelling.
+  '\bNO_COLOR\b',
+  '\bCARGO_TERM_COLOR\b',
+]
+
+[files]
+exclude = []

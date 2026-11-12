@@ -1,0 +1,37 @@
+name: Scheduled dependency audit
+
+# CI skips `make audit` on Dependabot pull requests so that newly published
+# advisories against the existing lockfile cannot block unrelated dependency
+# bumps. This scheduled run is the compensating control: it audits the
+# default branch weekly so anything that slips through surfaces within days.
+
+on:
+  schedule:
+    - cron: '11 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+
+      - name: Audit dependencies
+        run: make audit
