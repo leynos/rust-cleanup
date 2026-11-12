@@ -99,7 +99,7 @@ class StateStore:
     """
 
     def __init__(self, path: Path | None = None) -> None:
-        """Initialise an empty state store at ``path`` or the XDG default.
+        """Initialize an empty state store at ``path`` or the XDG default.
 
         Parameters
         ----------

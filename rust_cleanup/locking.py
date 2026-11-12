@@ -1,4 +1,4 @@
-"""Advisory locking that serialises overlapping rust-cleanup invocations."""
+"""Advisory locking that serializes overlapping rust-cleanup invocations."""
 
 import contextlib
 import fcntl
@@ -20,7 +20,7 @@ def lock_path() -> Path:
 
     ``XDG_RUNTIME_DIR`` provides a per-user, session-scoped location. When it is
     absent, as in cron, CI, or a minimal service manager, the lock falls back to
-    the private per-user state directory so overlapping runs still serialise.
+    the private per-user state directory so overlapping runs still serialize.
 
     Returns
     -------

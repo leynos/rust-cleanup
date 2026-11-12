@@ -50,7 +50,7 @@ def _without_run_variance(record: cabc.Mapping[str, object]) -> dict[str, object
     Parameters
     ----------
     record : collections.abc.Mapping[str, object]
-        Telemetry record to normalise.
+        Telemetry record to normalize.
 
     Returns
     -------
@@ -58,10 +58,10 @@ def _without_run_variance(record: cabc.Mapping[str, object]) -> dict[str, object
         The record without its correlation token and with any duration replaced
         by :data:`_SNAPSHOT_DURATION`.
     """
-    normalised = without_correlation(record)
-    if "duration_ms" in normalised:
-        normalised["duration_ms"] = _SNAPSHOT_DURATION
-    return normalised
+    normalized = without_correlation(record)
+    if "duration_ms" in normalized:
+        normalized["duration_ms"] = _SNAPSHOT_DURATION
+    return normalized
 
 
 def test_cli_records_lock_contention_without_starting_cleanup(

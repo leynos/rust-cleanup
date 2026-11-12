@@ -370,7 +370,7 @@ class TestMainFailures:
     def test_main_rejects_an_invalid_policy_flag(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """An unparseable policy override stops the run before any sweep starts.
+        """An unparsable policy override stops the run before any sweep starts.
 
         Parameters
         ----------

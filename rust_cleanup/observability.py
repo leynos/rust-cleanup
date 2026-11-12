@@ -148,7 +148,7 @@ class LoggingEventSink:
         Parameters
         ----------
         record : cabc.Mapping[str, object]
-            Bounded record serialised to one JSON line at INFO level.
+            Bounded record serialized to one JSON line at INFO level.
         """
         self._logger.info(
             "%s%s", EVENT_PREFIX, json.dumps(dict(record), sort_keys=True)

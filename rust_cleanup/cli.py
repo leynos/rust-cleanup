@@ -202,7 +202,7 @@ def _render_filesystem(
 
 
 def _render_outcome(run: CleanupRun, outcome: CleanupOutcome, *, verbose: bool) -> None:
-    """Render everything the sweep observed and summarise the run.
+    """Render everything the sweep observed and summarize the run.
 
     Successful deletions stay an aggregate count: a real run names each
     protected target under ``--verbose`` but never each deleted one. The

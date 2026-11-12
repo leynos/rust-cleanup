@@ -9,7 +9,7 @@ failures on standard error, and a refusal to report success for an incomplete
 scan.
 
 Each message is pinned on its own here; the Syrupy snapshot at the end of the
-module pins the report they compose, with the temporary root normalised.
+module pins the report they compose, with the temporary root normalized.
 Declined candidates and the empty-scan notice are rendered from the same
 outcome but pinned in :mod:`test_cli_omissions`.
 """

@@ -89,7 +89,7 @@ def test_an_environment_spelling_protects_the_output_it_names(
     """A build that redirects its output through the environment protects it.
 
     Cargo reads its configured output from either spelling of the variable, and
-    each row uses a directory a layout rule would never recognise: one takes a
+    each row uses a directory a layout rule would never recognize: one takes a
     custom branch-derived name, the other a plain one. The process works in an
     unrelated directory, so only the variable can explain the protection, and
     the unrelated output beside it pins that the protection stays local.

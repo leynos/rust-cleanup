@@ -12,8 +12,8 @@ from hypothesis import strategies as st
 from rust_cleanup.pressure import FilesystemIdentity, Mode
 from rust_cleanup.state import StateLoadResult, StateStore, default_state_path
 
-# A generated mount point has to survive ``Path`` normalisation unchanged. Two
-# distinct strings that normalise to one path would give two dictionary keys a
+# A generated mount point has to survive ``Path`` normalization unchanged. Two
+# distinct strings that normalize to one path would give two dictionary keys a
 # single ``FilesystemIdentity``, and the mode stored for the first would be read
 # back for the second. Restricting every segment to letters and digits keeps
 # separators, ``.`` segments, and trailing slashes out of the input.

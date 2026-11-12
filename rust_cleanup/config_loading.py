@@ -337,7 +337,7 @@ def load_config(
         TOML file to read. ``None`` selects :func:`default_config_path`.
 
     cli_overrides : cabc.Mapping[str, object] | None, default=None
-        Recognised command-line values, which outrank the file and defaults.
+        Recognized command-line values, which outrank the file and defaults.
 
     Returns
     -------
