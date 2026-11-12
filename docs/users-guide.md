@@ -6,6 +6,12 @@ configuration, diagnostics, and scheduled use. Maintainers should also read the
 [developer guide](developers-guide.md)
 and [technical design](design-doc.md).
 
+The current command removes whole target directories. Artefact-level pruning
+inside retained targets is
+[proposed](design-doc.md#11-proposed-combined-target-and-artefact-cleanup) and
+tracked in the [draft implementation roadmap](roadmap.md); the proposed
+configuration keys and flags are not available yet.
+
 ## Install from a checkout
 
 The package requires Python 3.14 or newer on Linux. It reads `/proc` to inspect

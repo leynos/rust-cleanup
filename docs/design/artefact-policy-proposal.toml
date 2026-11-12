@@ -1,0 +1,22 @@
+# PROPOSED: the current release does not accept cleanup.artefacts or d units.
+# This is a design contract, not an installable configuration example.
+
+[cleanup.normal]
+stale_after = "2h"
+
+[cleanup.pressure]
+enter_percent = 80
+exit_percent = 75
+stale_after = "10m"
+
+[cleanup.critical]
+enter_percent = 95
+exit_percent = 90
+stale_after = "2m"
+
+[cleanup.artefacts]
+# The completed feature runs in the same sweep by default.
+enabled = true
+# Omit stale_after to inherit the selected normal/pressure/critical TTL.
+# An explicit override can express cargo-sweep's day-based policy:
+# stale_after = "7d"

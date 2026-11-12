@@ -74,6 +74,8 @@ ______________________________________________________________________
   operation.
 - [Technical design](docs/design-doc.md) – architecture, invariants, and known
   limits.
+- [Draft roadmap](docs/roadmap.md) – planned artefact pruning in the same
+  sweep as whole-target cleanup.
 - [Developer guide](docs/developers-guide.md) – development and validation.
 - [Documentation contents](docs/contents.md) – the complete documentation index.
 

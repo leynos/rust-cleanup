@@ -1,15 +1,14 @@
 # rust-cleanup technical design
 
-- **Status:** Living description of the implemented system.
+- **Status:** Implemented design in sections 1–10; proposed combined cleanup
+  in section 11.
 - **Audience:** Maintainers, reviewers, and Linux operators.
 - **Updated:** 2026-11-12.
 - **Implementation baseline:** Source imported in `c13079c`, with spelling
   corrections in `b7b9d05`; Python 3.14 or newer.
-- **Scope:** Discovery, planning, reclamation, persistence, and reporting.
-- **Companion documents:** [Users' guide](users-guide.md),
-  [developer guide](developers-guide.md), and
-  [repository layout](repository-layout.md). The implementation defines the
-  executable contracts; this document explains their shape and limits.
+- **Scope:** Discovery, planning, reclamation, persistence, reporting, and a
+  proposed combined target/artefact sweep.
+- **Companion documents:** See [documentation contents](contents.md).
 
 ## 1. Problem and scope
 
@@ -33,8 +32,9 @@ locks, and JSON persistence. It does not invoke Cargo, manage Cargo's package
 cache, provide a daemon, or install a scheduler. Ansible provisioning remains
 in the source `dev-env-rocky` repository.[^package]
 
-This document records existing decisions. It introduces no new runtime
-mechanism or accepted architecture change requiring a separate decision record.
+Sections 1–10 record existing decisions. Section 11 proposes combined
+whole-target and artefact cleanup, with its decision gate recorded separately
+in ADR 001; it has not been implemented.
 
 ## 2. Terminology and operating assumptions
 
@@ -363,6 +363,335 @@ passing host-independent suite.
 | Use injected standard-library adapters.                 | Require Cargo subprocesses or a background service.  | Keeps the runtime dependency set empty and supports controlled verification of failures and changes between stages.          |
 | Emit bounded events beside human diagnostics.           | Serialize arbitrary diagnostic objects as telemetry. | Provides fixed aggregate records without copying paths or raw exceptions into the event schema.                              |
 
+## 11. Proposed combined target and artefact cleanup
+
+This section proposes implementation work; it does not describe functionality
+available in the current command.
+[ADR 001](adr-001-combined-target-and-artefact-cleanup.md) records the proposed
+architectural choice. The [implementation roadmap](roadmap.md) orders its
+delivery and compatibility gates.
+
+### 11.1. Goal and requirements
+
+Space-constrained hosts run many Rust coding agents concurrently. A recent
+write anywhere in a target keeps the whole directory young, even when most of
+its cached outputs are old. Combined cleanup must reclaim those old groups
+without waiting for the entire directory to become inactive.
+
+| ID  | Required outcome                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | One invocation, invocation lock, root discovery, and filesystem pressure decision serve both strategies.                                    |
+| R2  | One ordinary planning inventory per target supplies whole-target activity and artefact metadata; safety rereads remain permitted.           |
+| R3  | Artefact TTL inherits the selected whole-target TTL, including configuration and CLI overrides, unless explicitly overridden.               |
+| R4  | Whole-target and descendant artefact operations never coexist in an executable plan.                                                        |
+| R5  | Recent aggregate target activity does not veto old artefact groups; active or uncertain build ownership does.                               |
+| R6  | Partial mutation requires a supported, acquired Cargo profile guard and fresh evidence.                                                     |
+| R7  | Both strategies consume one measured filesystem recovery budget and stop together.                                                          |
+| R8  | Existing target counters retain their meaning; artefact outcomes and failures are reported separately.                                      |
+| R9  | Dry runs describe disjoint plans without payload or mode writes.                                                                            |
+| R10 | The completed feature runs both strategies by default, supports rollback, and demonstrates concurrent-build and Cargo-layout compatibility. |
+
+### 11.2. Cargo-sweep reference and compatibility boundary
+
+The reference is cargo-sweep 0.8.0 at commit
+`94a7cf012d40d314896c0fa6986132b0a1e931ba`. Its time mode derives a keep set
+from access times of immediate children inside `.fingerprint/<name-hash>`. The
+newest child access time determines each fingerprint's age. Outputs whose hash
+is outside the keep set are removal candidates; this does not prove package
+reachability or that a human considers an output unnecessary.[^sweep-time]
+
+A hash is the final dash-separated component before the name's first dot, and
+must contain exactly 16 ASCII hexadecimal characters. Selection joins matching
+entries within one profile's `build`, `deps`, optional `native`, profile root,
+and `.fingerprint` directories. It leaves unhashed final outputs, `examples`,
+and `incremental` outside that mapping. Different profiles or targets never
+share a group merely because their hashes match.[^sweep-groups]
+
+The native implementation adopts this time-and-group model, with explicit
+conservative differences:
+
+- Require a corresponding, non-empty, readable fingerprint. Preserve orphan
+  hashes and unknown names rather than sweeping the complement of a keep set.
+- If several fingerprints map to one hash, the newest access observation
+  protects the entire group; incomplete evidence preserves it.
+- Preserve unsupported layouts, links, cross-filesystem members, and uncertain
+  ownership. Do not recursively discover arbitrary nested `.fingerprint`
+  directories or follow external build-directory configuration.
+- Preserve the retained target, profile, `.fingerprint` container, cache marker,
+  `.rustc_info.json`, and Cargo lock files. Only selected group members are
+  removable.
+
+Initially recognize structurally verified direct profiles and the supported
+`<target-triple>/<profile>` layout, including custom profile names. Cargo
+explicitly treats intermediate layout as internal and permits a separate build
+directory; supporting that separate tree is deferred.[^cargo-layout]
+
+### 11.3. Retention policy and proposed configuration
+
+By default, artefact TTL equals the effective selected mode's `stale_after`:
+normal `2h`, pressure `10m`, and critical `2m`. Custom whole-target settings
+and CLI overrides flow through before inheritance. Retain sub-day precision and
+do not silently apply an age floor.
+
+The [proposed policy file](design/artefact-policy-proposal.toml) is a contract
+for implementation, not a configuration accepted by the current release:
+
+```toml
+[cleanup.artefacts]
+enabled = true
+# Omit stale_after to inherit the selected mode's effective TTL.
+# stale_after = "7d"
+```
+
+The completed implementation defaults `enabled` to true. `enabled = false` or
+`--no-artefacts` restores whole-target-only selection. `--artefacts` explicitly
+enables it; these CLI switches are mutually exclusive. Optional
+`--artefact-stale-after DURATION` overrides the TOML artefact TTL; omitting
+both overrides means inheritance, not a copied default captured at startup. An
+explicit artefact TTL never enables a disabled strategy by itself.
+
+Extend duration parsing additively with `d`, meaning exactly 86,400 seconds.
+Existing `s`, `m`, and `h` inputs retain their meaning. Positive integer
+durations are required; zero is not an alias for cargo-sweep's `--all` mode. No
+persistent artefact age index or new pressure-state schema is required.
+
+For a captured invocation time `now`, a group is eligible when its observed
+fingerprint access age is at least its TTL. Future access timestamps have age
+zero. This matches cargo-sweep's strict recent keep-set comparison: equality is
+eligible. Whole-target eligibility keeps its current strictly-older comparison.
+The duration defaults are shared; the two timestamp sources and boundary
+comparisons remain explicit in the
+[contract cases](design/combined-sweep-cases.json).
+
+### 11.4. Shared inventory and component responsibilities
+
+Keep the root and target discovery boundary from sections 3–4. Replace the
+production planning-time activity-only walk with a target inventory that also
+collects profile, fingerprint, hash-member, identity, and access metadata.
+Derive the legacy newest-mtime result from that traversal. Equivalence against
+`inspect_activity` is a compatibility obligation, including marker exclusion,
+empty targets, and uncertainty. Partial cleanup applies stricter no-link rules
+without silently changing whole-target activity semantics.
+
+Retain compact group manifests and top-level member records, not arbitrary file
+contents or a second serialized cache. Directory members need a streaming
+metadata manifest so changed descendants can invalidate their planned removal.
+Unknown files contribute to whole-target activity but need not become artefact
+records. Memory should scale with groups and necessary member metadata rather
+than retaining a second copy of every directory tree.
+
+| Boundary                       | Responsibility and reuse rule                                                                                                       |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `TargetInventory`              | One target's whole-activity result, supported profiles, evidence completeness, and group snapshots.                                 |
+| `ArtefactGroup`                | Target identity, relative profile, hash, newest fingerprint access, output members, fingerprint members, and revalidation manifest. |
+| Operation plan                 | Tagged whole-target or artefact-group operations, with filesystem identity and deterministic ordering.                              |
+| Profile mutation guard         | An acquired lease for the supported Cargo lock protocol, released after the group attempt.                                          |
+| Existing sweep and usage ports | Own invocation, pressure mode, recovery, and state saving for both strategies.                                                      |
+
+These are planned domain and adapter boundaries, not a new generic cleanup
+framework. Reuse or extract the existing Cargo profile enumeration,
+confinement, process ownership, clock, and usage helpers before adding
+equivalents. `ActivityGetter` remains a compatibility surface for whole-target
+callers. When a legacy injected adapter cannot supply a trustworthy partial
+inventory, preserve partial candidates rather than silently performing a
+separate host walk behind that adapter.
+
+Figure 2 shows the combined flow. Ordinary planning traversals are shared;
+revalidation deliberately reads relevant evidence again.
+
+```mermaid
+flowchart TD
+    Discover[One root-discovery pass under the invocation lock] --> Inventory[One planning inventory per accepted target]
+    Inventory --> Policy[Group by filesystem and select one pressure mode]
+    Policy --> Partition[Partition whole-target and retained-target work]
+    Partition --> Whole[Revalidate whole targets in existing order]
+    Whole --> Recovery{Recovered or usage failed?}
+    Recovery -->|Yes| Report[Persist mode and report both strategies]
+    Recovery -->|No or normal mode| Groups[Take next oldest group from retained targets]
+    Groups --> Guard{Profile guard and group checks clear?}
+    Guard -->|Yes| Mutation[Remove allowed outputs then fingerprint metadata]
+    Guard -->|No| Preserve[Record preservation and advance]
+    Preserve --> Groups
+    Mutation --> Measure[Remeasure after a mutating attempt in pressure mode]
+    Measure --> Next{Recovery established or usage failed?}
+    Next -->|Yes| Report
+    Next -->|No| Groups
+    Groups -->|No safe groups remain| Report
+    Partition -->|Dry run| Preview[Report disjoint plans without mutation or mode writes]
+```
+
+*Figure 2: Disjoint whole-target and artefact operations share one filesystem
+recovery decision.*
+
+### 11.5. Disjoint planning and common recovery
+
+For each filesystem, select one mode and resolve both TTLs from the same
+configuration and clock observation. First select whole-target operations using
+the existing ordering and protection rules. Suppress every descendant artefact
+operation for those targets. A whole-target operation invalidated during
+revalidation has no fallback partial plan in that invocation.
+
+Only retained targets enter artefact planning. Aggregate recency alone permits
+that planning; active or uncertain build ownership and unresolved target safety
+do not. Sort eligible groups by oldest fingerprint access time, then canonical
+target path, relative profile, and hash. Whole-target operations retain
+priority, so existing reclamation order does not depend on interpreting atime
+and mtime as comparable activity measures.
+
+Normal mode processes eligible whole targets, then eligible retained-target
+groups. Pressure and critical modes check the shared recovery predicate before
+each operation. A whole-target deletion can satisfy recovery and suppress the
+entire artefact stage; a group deletion can stop later groups. Re-read usage
+after each attempted group mutation, including partial failure, because a
+failed recursive removal may already have freed space. Unknown usage stops
+further mutation on that filesystem and leaves recovery unresolved. Other
+filesystem plans continue independently.
+
+Keep the selected pressure mode and existing state-save policy. Do not derive
+free space from apparent file sizes or subtract an estimated byte count from a
+usage reading. Hard links, sparse files, open descriptors, and concurrent agent
+writes make that arithmetic unsound. Measured usage remains authoritative.
+
+### 11.6. Concurrent-build guards and mutation protocol
+
+Fresh process ownership, accepted-target evidence, root confinement, and group
+identity must pass immediately before mutation. A recent aggregate target mtime
+is not an artefact-age check and must not be reused as one. Changed fingerprint
+access, changed members, or a changed manifest invalidate the entire group
+before its first deletion. Do not recompare an unchanged target-wide snapshot
+after earlier groups have modified that target; verify the remaining group's
+own evidence instead.
+
+The current `LockProbe` observes and releases locks. A false result can also
+mean an unsupported filesystem, so it cannot authorize partial mutation.
+Introduce an explicit `acquired`, `busy`, `unsupported`, or `unknown` profile
+guard result. Proceed only while an acquired lease is held. Open existing
+regular lock files without following links or creating replacements, acquire
+the certified lock set in deterministic order, and release all acquired locks
+if the complete lease cannot be obtained. Busy profiles never make the sweep
+wait for an agent's build.
+
+A local Cargo 1.99.1 experiment produced `.cargo-lock`, `.cargo-build-lock`, and
+`.cargo-artifact-lock`. An offline build waited on an exclusive `.cargo-lock`
+and completed after release. That establishes one command/version observation,
+not a general protocol. Roadmap phase 1 must certify supported Cargo commands,
+versions, and lock sets before destructive partial cleanup. Unknown protocols
+preserve the profile; permission to delete must not be inferred from a filename.
+
+Hold a lease for one group attempt, with fresh process inspection and member
+revalidation inside it. Release promptly so queued builders can proceed, and
+check cancellation between groups. The protocol must not remove or replace lock
+files. Confinement checks cover parent components, links, source markers, and
+device identity; use anchored filesystem operations where supported rather than
+trusting a path string checked earlier.
+
+Remove selected output members before their fingerprint metadata. If an output
+removal fails, preserve remaining fingerprint evidence and record a partial
+failure. Cancellation or failure does not roll back removed files. A later run
+must preserve any resulting unknown cohort rather than assume it is an orphan
+safe to delete. Existing whole-target race limits in section 8 remain; a lease
+does not prove protection against arbitrary non-cooperating writers.
+
+### 11.7. Access-time and resource limits
+
+Fingerprint access time is an eviction heuristic. `relatime` can coalesce
+access updates, and `noatime` disables them; neither is a dependency-liveness
+oracle.[^access-times] This matters particularly when inherited TTLs are
+minutes rather than days. Do not silently lengthen the requested TTL. Report
+coalesced age confidence and warn once per affected filesystem when a sub-day
+TTL relies on coalesced atime. Preserve partial candidates where access-time
+support is known disabled or cannot be established; whole-target policy is
+unaffected.
+
+Reading metadata must not open fingerprint contents merely to calculate age.
+That can refresh the evidence the cleaner is trying to measure. Empty,
+unreadable, non-regular, or future-dated evidence receives an explicit result;
+empty and unreadable evidence is unknown, while a valid future timestamp keeps
+the group recent. The compatibility matrix must include `strictatime`,
+`relatime`, known-disabled atime, and unavailable mount-policy information.
+
+There must be one ordinary root-discovery pass and at most one ordinary
+planning traversal of each accepted target. Metadata and process rereads for
+guards are measured separately, not hidden to claim a single I/O operation. No
+Cargo metadata subprocess, compiler invocation, upstream binary, or duplicate
+whole-tree planning walk is part of the production pass. Performance evidence
+must record planning walks, guard walks, process snapshots, peak memory, and
+time to first safe reclamation under many-agent load. No latency benchmark is
+yet available. Active output may exhaust the disk despite correct cleanup;
+critical mode must not bypass protection to manufacture progress.
+
+### 11.8. Reporting, compatibility, and deployment
+
+Keep `CleanupOutcome.scanned`, `deleted`, and historical two-value unpacking
+about target directories. Preserve existing whole-target dry-run conventions.
+Add separately named planned, completed, failed, and preserved group counts,
+completed member-path counts, and affected retained-target counts. Logical byte
+estimates must be labelled estimates rather than bytes freed, and partial
+failure must not increment a completed-group count.
+
+Add bounded artefact inventory and deletion event operations and aggregate
+counters to the existing emitter. Verbose human output can name group members;
+structured events must not acquire path, environment, or raw-error payloads. A
+preview lists disjoint operations and labels group counts as planned; it cannot
+predict which deletions will satisfy recovery during the later run.
+
+Retain the current exit-status meanings and precedence: fatal invocation errors
+return 1, invalid configuration returns 2, unresolved measured recovery returns
+3, otherwise 0. Per-operation failures remain visible in failure counts and
+warnings, including when the overall status is 0. Do not mask status 3 in the
+systemd service. Unknown age or unsupported profiles are preservation outcomes,
+not proof that a filesystem is healthy.
+
+The completed feature is enabled in the ordinary command and existing timer.
+The rollout task must document that behaviour change before release and verify
+`--no-artefacts` and `enabled = false` as rollback paths. Keep the current
+working example configuration valid; proposed keys and flags belong in the
+users' guide only once implemented. This documentation change adds no runtime
+feature, package dependency, or production configuration change.
+
+### 11.9. Verification and acceptance gates
+
+The [JSON contract cases](design/combined-sweep-cases.json) fix TTL
+inheritance, exact age boundaries, name parsing, descendant suppression, and
+recovery outcomes. Their consistency has been checked independently; they are
+proposed acceptance vectors, not evidence of an implementation. Extend them
+into real filesystem and Cargo fixtures in the roadmap.
+
+| Property                  | Required evidence                                                                                                                                                                       | Limit to state explicitly                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Shared pass               | Instrument discovery and planning: one root pass and one inventory per target when both strategies are enabled.                                                                         | Guard rereads are extra work.                           |
+| Inherited TTL             | Default and customized mode TTLs, CLI/TOML precedence, explicit day overrides, and pressure transitions produce the same effective default window for both strategies.                  | Timestamp sources and equality comparisons differ.      |
+| Disjointness              | Property-generated target/profile/member plans contain no whole target and descendant group operation, including invalidated-parent cases.                                              | External mutation remains a runtime concern.            |
+| Recent-target reclamation | A mixed-age target survives while its old recognized group is pruned and its recent group, roots, locks, and unknown entries survive.                                                   | Recency means recorded fingerprint atime.               |
+| Build exclusion           | Real Cargo processes respect the held lease; busy and uncertain profiles are skipped, cancellation releases locks, and a build starting after planning is protected.                    | A supported command/version matrix is required.         |
+| Group consistency         | Changed evidence aborts before mutation; injected member failures retain fingerprint evidence and report partial work.                                                                  | Interrupted mutations are not atomic.                   |
+| Shared recovery           | Injected usage sequences stop both strategies at the same watermark, including after partial failure or an unreadable reread.                                                           | Do not fill the operator's host disk to test pressure.  |
+| Rebuild correctness       | Real Cargo build/check/test succeed after permitted pruning; a subsequent no-change build remains valid. Compare eligible sets with the pinned upstream on readable supported fixtures. | Preserve and document intentional upstream differences. |
+
+Combinatorial coverage crosses mode and prior state, inherited or explicit TTL,
+whole-target eligibility, group age, active or uncertain ownership, lease
+state, layout, atime policy, dry run, and usage failure. Use pairwise
+generation plus directed cases for critical mode with a new build, a partially
+failed group that reaches recovery, and a changed parent whose suppressed
+groups must not reappear. Do not present pairwise coverage as a proof over all
+schedules.
+
+A separate many-agent acceptance slice must exercise isolated and shared
+targets, unrelated active targets alongside reclaimable targets, concurrent
+cleaner invocations sharing the lock, queued Cargo builds, and interruption.
+Use deterministic process/usage adapters for stress and failure ordering, plus
+real-Cargo command and rebuild checks. No formal race-freedom claim is made.
+
+### 11.10. Deferred scope
+
+The initial combined feature excludes toolchain-installed filtering, explicit
+toolchain hashes, timestamp markers, target-size quotas, `--all`, orphan-hash
+recovery, `incremental`, `examples`, and unhashed final-output pruning. It also
+excludes separate external build-directory discovery, more permissive
+profile-scoped build ownership, Windows support, and any relaxation of active
+build protection in critical mode. Reconsider each only with its own evidence
+and decision; none is a prerequisite for the requested combined sweep.
+
 [^cargo-clean]: [Cargo clean reference](https://doc.rust-lang.org/cargo/commands/cargo-clean.html),
                 consulted 2026-11-12.
 [^package]: [Package configuration](../pyproject.toml) and
@@ -392,3 +721,15 @@ passing host-independent suite.
               and [sweep event boundaries](../rust_cleanup/sweep_telemetry.py).
 [^verification]: [Pressure verification](../tests/test_config_and_pressure.py), [root-selection properties](../tests/test_scan_roots.py), [state round trips](../tests/test_state.py),
                  and [deletion guard contracts](../tests/test_reclamation.py).
+
+[^sweep-time]: [cargo-sweep time selection](https://github.com/holmgr/cargo-sweep/blob/94a7cf012d40d314896c0fa6986132b0a1e931ba/src/fingerprint.rs#L109-L169)
+               and
+               [day conversion](https://github.com/holmgr/cargo-sweep/blob/94a7cf012d40d314896c0fa6986132b0a1e931ba/src/main.rs#L223-L232).
+[^sweep-groups]: [Hash parsing and profile-group removal](https://github.com/holmgr/cargo-sweep/blob/94a7cf012d40d314896c0fa6986132b0a1e931ba/src/fingerprint.rs#L39-L59)
+                 and
+                 [member directories](https://github.com/holmgr/cargo-sweep/blob/94a7cf012d40d314896c0fa6986132b0a1e931ba/src/fingerprint.rs#L206-L288).
+[^cargo-layout]: [Cargo build-cache layout and stability boundary](https://doc.rust-lang.org/cargo/reference/build-cache.html),
+                 consulted 2026-11-12.
+[^access-times]: [Linux mount access-time options](https://man7.org/linux/man-pages/man8/mount.8.html),
+                 including `relatime`, `strictatime`, and `noatime`, consulted
+                 2026-11-12.

@@ -1,7 +1,10 @@
 # Developer guide
 
 Read the [technical design](design-doc.md) for the implemented architecture and
-its safety boundaries, and the [users' guide](users-guide.md) for operation.
+its safety boundaries, and the [users' guide](users-guide.md) for operation. The
+[draft roadmap](roadmap.md) and
+[proposed ADR 001](adr-001-combined-target-and-artefact-cleanup.md) describe
+combined cleanup work that is not implemented yet.
 
 ## Source import
 
