@@ -1,15 +1,19 @@
 # Documentation contents
 
-This page indexes the generated project's documentation. Browse the guides
-below.
+[Documentation contents](contents.md) indexes the rust-cleanup guides and
+engineering references.
 
 ## Project guides
 
+- [Technical design](design-doc.md) explains the implemented architecture,
+  deletion guards, verification targets, and limits.
+
 - [Repository layout](repository-layout.md) describes the cleanup modules and
   test assets.
-
-- [User guide](users-guide.md) explains how to use the generated project and
-  its public build and test commands.
+- [User guide](users-guide.md) covers installation, scan roots, retention,
+  diagnostics, and scheduled operation.
+- [Example configuration](../examples/config.toml) provides the default roots
+  and retention policy in a reusable TOML file.
 - [Developer guide](developers-guide.md) explains the contributor workflow and
   points maintainers to script automation standards.
 - [Documentation style guide](documentation-style-guide.md) defines the

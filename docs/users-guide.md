@@ -1,104 +1,149 @@
-# rust-cleanup Users' Guide
+# rust-cleanup users' guide
 
-`rust-cleanup` removes stale Rust build output across every configured scan
-root. It scans the roots once, makes decisions per backing filesystem, and only
-removes a directory it can positively identify as Cargo output.
+This guide is for Linux developers and operators who want to remove stale Rust
+build output across repositories or worktrees. It covers installation, preview,
+configuration, diagnostics, and scheduled use. Maintainers should also read the
+[developer guide](developers-guide.md)
+and [technical design](design-doc.md).
 
-## Scan roots
+## Install from a checkout
 
-The default roots are `~/.lody/repos` and `~/Projects`. They can be replaced in
-the configuration file:
+The package requires Python 3.14 or newer on Linux. It reads `/proc` to inspect
+build processes and uses advisory filesystem locks. Its runtime dependencies
+are all in Python's standard library; Cargo is not required to run the cleaner.
+The commands below install the local checkout rather than a published package.
+
+With [uv](https://docs.astral.sh/uv/), run from the repository root:
+
+```bash
+uv tool install --python 3.14 .
+rust-cleanup --help
+```
+
+If the command is not on `PATH`, run `uv tool update-shell` and follow its
+instructions, or invoke the executable from the directory printed by
+`uv tool dir --bin`.
+
+Alternatively, install into a Python virtual environment:
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/rust-cleanup --help
+```
+
+Use the executable from that environment in subsequent examples when choosing
+this installation method.
+
+## Preview a cleanup
+
+Start with a specific root. From a project checkout, this previews the current
+directory without deleting its build output:
+
+```bash
+rust-cleanup --dry-run --verbose .
+```
+
+Replace `.` with the directory containing the projects to scan. Several roots
+can be supplied in one invocation:
+
+```bash
+rust-cleanup --dry-run --verbose "$HOME/Projects" "$HOME/.lody/repos"
+```
+
+Each explicitly supplied root must exist and be a readable directory. Omit a
+path that is absent on the host. Relative command-line paths resolve against
+the current directory.
+
+A dry run reports every currently eligible target in oldest-first order within
+each filesystem. It writes neither target deletions nor mode changes. It still
+inspects the host and acquires the invocation lock, so it can create a lock
+file and its parent directory. A real run performs fresh checks and can stop
+when usage recovers, so it can delete fewer targets than the preview lists.
+
+## Run a cleanup
+
+Remove `--dry-run` to apply the policy:
+
+```bash
+rust-cleanup --verbose .
+```
+
+With no positional roots, the command uses `[scan].roots` from configuration,
+or the built-in `~/.lody/repos` and `~/Projects` roots when no list is
+configured. A supplied root list replaces the configured roots for that
+invocation.
+
+The cleaner permanently removes accepted directory trees. It provides no
+recycle bin or undo. Run it as the account that owns the disposable output;
+process inspection and deletion permissions affect which targets it preserves.
+
+## Choose scan roots
+
+The optional configuration file is `$XDG_CONFIG_HOME/rust-cleanup/config.toml`,
+falling back to `$HOME/.config/rust-cleanup/config.toml`. Only non-empty
+absolute `XDG_CONFIG_HOME` values override the fallback. If `HOME` is unusable,
+the tool tries the account's home-directory entry.
 
 ```toml
 [scan]
 roots = ["~/.lody/repos", "~/Projects", "/srv/work"]
 ```
 
-A configured list replaces the built-in defaults rather than extending them, so
-repeat any default that should stay covered. A leading `~` or `~/` expands
-against the home directory; everything else, including a `$VAR` reference, is
-kept literal with no shell evaluation. Command-line roots replace both the file
-and the defaults. A configured root that is missing or is not a directory is
-reported on standard error and skipped, so one unavailable root never
-suppresses the rest. A missing *built-in* default is the one exception: the
-host simply may not have that directory, so it is reported only under
-`--verbose` rather than on every timed run. Repeated and overlapping roots are
-collapsed to the outermost, so no tree is walked twice, and an unreadable root
-stops the run rather than narrowing it silently. A symbolic link loop, or a
-root below a directory that cannot be read, counts as unreadable; an explicit
-root in either state is reported as a path that cannot be inspected.
+The configured list replaces the defaults, so repeat any default that should
+remain covered. `roots = []` requests no discovery. Duplicate and overlapping
+roots collapse to the outermost canonical directory.
 
-## What counts as build output
+Configured expressions accept absolute paths and leading `~` or `~/`. They
+reject relative paths, empty expressions, and another user's home shorthand.
+There is no shell evaluation: `/srv/$WORK` keeps `$WORK` literally, and `*`
+does not expand into a wildcard selection.
 
-Discovery considers a directory named `target`, or any directory holding
-`.rustc_info.json`; every other directory is left alone. A considered directory
-is accepted when it carries a `CACHEDIR.TAG` marker, or when it shows the
-layout Cargo leaves behind: `.rustc_info.json` plus a profile directory holding
-at least one of `.cargo-lock`, `.fingerprint`, `deps`, or `build`. The layout
-rule is what recognizes unmarked targets and custom names such as
-`ptq-pr43-cargo-target`. Accepting any single artefact is deliberate:
-`cargo clean` removes `.fingerprint` and `deps` while leaving the others.
+| Root condition                              | Behaviour                                    |
+| ------------------------------------------- | -------------------------------------------- |
+| Explicit path missing or not a directory    | Fail with status 1.                          |
+| Configured path missing or not a directory  | Report and skip it; scan the other roots.    |
+| Built-in default missing                    | Skip it; report it only with `--verbose`.    |
+| Root cannot be inspected                    | Refuse the sweep.                            |
+| Repeated, nested, or equivalent linked root | Keep the outermost canonical selection once. |
 
-Being considered is not acceptance: a bare name, including `target` or `debug`,
-never qualifies on its own. A directory showing `Cargo.toml` or `.git` is
-treated as a source tree and refused, as are lookalikes and symbolic links;
-links are never followed out of scope. The source-tree refusal is checked
-before the cache marker, so a checkout carrying `CACHEDIR.TAG` is refused as
-well. Every refusal carries a fixed reason token, and an empty sweep reports
-how many candidates it declined, so a quiet filesystem is distinguishable from
-a discovery rule that has stopped matching.
+A symbolic link supplied as a root can resolve to a directory. Links found
+inside the walk are not traversed for cleanup. The root directory itself is
+never a deletion candidate.
 
-## Pressure policy
+## Recognize disposable output
 
-The default policy follows the backing filesystem's used capacity. The
-persisted mode is hysteretic, so recovery thresholds are lower than entry
-thresholds and a one-off deletion cannot immediately downgrade critical mode.
+A directory is considered when it is named `target` or contains
+`.rustc_info.json`. It is accepted as build output when either:
 
-| Mode     | Enter        | Recover below | Inactive for more than |
-| -------- | ------------ | ------------- | ---------------------- |
-| Normal   | below 80%    | n/a           | 2 hours                |
-| Pressure | at least 80% | 75%           | 10 minutes             |
-| Critical | at least 95% | 90%           | 2 minutes              |
+- It has a recognized `CACHEDIR.TAG` file.
+- It contains `.rustc_info.json` and a Cargo profile layout with at least one
+  of `.cargo-lock`, `.fingerprint`, `deps`, or `build`.
 
-Targets are ordered oldest first within each filesystem, with canonical path as
-a deterministic tie-breaker. Pressure and critical mode re-read utilization
-after each deletion and stop as soon as their recovery watermark is reached.
+A custom output name therefore needs `.rustc_info.json` to be considered. A
+bare directory name or a marker on an unrelated cache does not automatically
+put it in scope. Direct `Cargo.toml` or `.git` entries identify a source tree
+and override cache evidence. The marker check does not validate a cache-tag
+signature or prove ownership.
 
-## Protection
+Discovery omits symbolic links, source trees, unmarked candidates without
+evidence, and lookalikes. Verbose output shows their fixed reasons: `symlink`,
+`source-tree`, `unmarked-no-evidence`, and `lookalike`.
 
-The cleaner snapshots Linux build processes once per sweep and protects targets
-owned by live Cargo, Rust compiler, linker, Kani, or Verus work, including
-output redirected through `CARGO_TARGET_DIR`, `CARGO_BUILD_TARGET_DIR`, or
-`--target-dir`. Immediately before each deletion it takes a fresh process-table
-reading, probes the Cargo build lock, revalidates the target's newest
-modification time, re-checks the layout evidence, and confirms the path is
-still a real directory inside a scan root. Each failure preserves the target
-and is recorded under a fixed reason:
+The walk skips `.git`, `.svn`, `.hg`, `node_modules`, `__pycache__`,
+`.pytest_cache`, `.cargo`, and `.rustup`. It does not clean Cargo's downloaded
+package cache or installed Rust toolchains.
 
-| Reason                 | Meaning                                               |
-| ---------------------- | ----------------------------------------------------- |
-| `active-build`         | A build process owns or targets this output.          |
-| `cargo-lock`           | A Cargo build lock is held or could not be read.      |
-| `unknown-activity`     | The newest modification time could not be read.       |
-| `revalidation-changed` | The target changed after it was planned for deletion. |
-| `recent-activity`      | The target is newer than the active cutoff.           |
-| `evidence-lost`        | The layout evidence is gone, or the path left scope.  |
-| `usage-unavailable`    | Filesystem usage could not be measured.               |
+## Configure retention and pressure
 
-The lock probe opens only an existing regular `.cargo-lock` directly under a
-profile directory, read-only, without creating anything; `CARGO_HOME`
-package-cache locks are never inspected. Lock absence is not treated as
-evidence of inactivity.
+Copy [the configuration example](../examples/config.toml) to the configuration
+path, or select it explicitly:
 
-## Configuration and state
+```bash
+rust-cleanup --config examples/config.toml --dry-run --verbose .
+```
 
-The optional TOML configuration is loaded from
-`${XDG_CONFIG_HOME:-$HOME/.config}/rust-cleanup/config.toml`; an
-`XDG_CONFIG_HOME` override is honoured only when it is a non-empty absolute
-path, and an empty or relative value falls back to `$HOME/.config`. Missing
-files use the defaults. Command-line options override TOML, and TOML overrides
-built-in defaults. The `[scan]` table is described under
-[Scan roots](#scan-roots):
+The example contains the built-in retention settings:
 
 ```toml
 [cleanup.normal]
@@ -115,156 +160,158 @@ exit_percent = 90
 stale_after = "2m"
 ```
 
-Durations accept positive integer `s`, `m`, and `h` suffixes. Unsafe or
-malformed configuration, including recovery thresholds that are not lower than
-their entry thresholds, fails before any deletion. Use `--config PATH` to test
-or explicitly select a file; the equivalent `--*-stale-after` and `--*-percent`
-options take the highest precedence.
+| Mode     | Initial entry           | Recovery requires usage below | Inactive for more than |
+| -------- | ----------------------- | ----------------------------- | ---------------------- |
+| Normal   | Below 80%               | No recovery target            | 2 hours                |
+| Pressure | At least 80%, below 95% | 75%                           | 10 minutes             |
+| Critical | At least 95%            | 90%                           | 2 minutes              |
 
-The selected mode is written atomically per canonical mount point and device
-identity to `${XDG_STATE_HOME:-$HOME/.local/state}/rust-cleanup/state.json`.
-Malformed state only emits a warning and causes a freshly derived mode to be
-used. A non-blocking advisory lock at `$XDG_RUNTIME_DIR/rust-cleanup.lock`
-prevents manual commands racing the systemd timer; when `XDG_RUNTIME_DIR` is
-unset, as in cron or a minimal service manager, the lock falls back to the
-private state directory. Contention is a successful no-op: the command reports
-it and exits with status 0 without starting a sweep.
+Used capacity is the filesystem's used bytes divided by total bytes. A prior
+mode affects the next selection: pressure remains active until usage falls
+below its exit threshold, and critical mode remains active at or above its own
+exit threshold. Reaching exactly 75% or 90% is insufficient to recover under
+the defaults. See the
+[transition table](design-doc.md#5-pressure-policy-and-persisted-state) for the
+complete default state machine.
 
-Install it with pip from this directory:
+Each filesystem has its own plan. Eligible targets are ordered by newest
+observed modification time, oldest first, with canonical path breaking ties.
+Pressure and critical runs remeasure usage after each successful deletion and
+stop when the recovery threshold is crossed. Normal runs apply retention to all
+eligible targets. Only filesystems containing discovered output are assessed.
 
-```bash
-python -m pip install .
-```
+Durations require a positive integer followed by `s`, `m`, or `h`; examples are
+`90s`, `10m`, and `2h`. Percentages must be integers from 0 through 100.
+Recovery thresholds must be lower than their respective entry thresholds, and
+the critical entry threshold must exceed the pressure entry threshold. Activity
+at exactly the cutoff remains protected.
 
-Run it against the configured roots, or against specific ones:
-
-```bash
-rust-cleanup
-rust-cleanup /path/to/worktree /path/to/other
-```
-
-Use `--dry-run` to report the selected mode and exact oldest-first deletion
-order without changing targets or state.
-
-When pressure or critical mode cannot reach its recovery watermark because no
-safe target exists, `rust-cleanup` emits a prominent warning and exits with
-status 3. This is an emergency capacity signal for the systemd journal, not a
-substitute for placing disposable build output on a separate filesystem.
-
-## Quality Gates
-
-Before the first quality-gate run, initialize Git at the generated project root
-with `git init`. Python source discovery and Markdown table formatting use Git
-repository metadata.
-
-Generated projects use `make all` as the standard local quality gate. It runs
-these targets in order:
-
-- `build`: create the local virtual environment and install development
-  dependencies with `uv sync --group dev`.
-- `check-fmt`: check Ruff formatting for Python sources and, when Rust is
-  enabled, `cargo fmt` for the Rust extension.
-- `lint`: run `lint-python` and, when Rust is enabled, `lint-rust`.
-- `typecheck`: run `ty check`.
-- `test`: run pytest and, when Rust is enabled, Rust tests.
-- `spelling`: regenerate `typos.toml` and check repository-wide spelling.
-
-Run `make markdownlint` separately to lint Markdown and run the same spelling
-gate. Run `make audit` separately to check dependencies with `pip-audit` and,
-when Rust is enabled, `cargo audit`.
-
-The Python baseline is `3.14` (minimum: 3.12).
-
-Git discovers Python sources from tracked and untracked files, including hidden
-action directories. `lint-python` runs Ruff 0.16.8 and Interrogate for 100%
-docstring coverage, followed by the pinned base Pylint (`PYLINT_VERSION`). It
-uses the interpreter selected for the baseline:
-
-uv-managed CPython 3.14 (`PYLINT_PYTHON`)
-
-The base sweep keeps `syntax-error` enabled, so a module that the interpreter
-cannot parse fails linting rather than being skipped.
-
-The DF12 Python Lints v0.4.0 Pylint plugin adds its configured project rules.
-DF12 Pylint, Ambrleaks, Skylos, Vulture, and the duplication detector run as
-isolated tools on Python 3.14. Ambrleaks checks `tests/`; Skylos checks the
-repository, and Vulture checks test helpers. The duplication gate installs its
-pinned Nose detector with the shared verified installer before checking
-duplication families. `make lint-actions` validates GitHub Actions sources with
-actionlint, action-validator, yamllint, and shellcheck.
-
-Ruff and `ty` run as isolated tools on Python 3.14; `ty` is pinned to 0.0.56.
-The Makefile pins mdtablefix to 0.6.1 for Markdown table formatting. CI
-installs these CLI tools and runs `make markdownlint`.
-
-The spelling target regenerates `typos.toml` from the live shared dictionary
-and the `typos.local.toml` overlay on every run, so `typos.toml` is never drift
-checked in continuous integration. Run `make spelling` directly when updating
-documentation; commit the regenerated `typos.toml`. An ignored local cache
-remains usable when the shared source is temporarily offline.
-
-Pytest discovery is limited to the top-level `tests/` tree. Keep generated
-project unit tests there rather than in package module directories or
-`unittests/` subdirectories, because CI coverage runs through xdist-backed
-SlipCover support.
-
-When the Rust extension is enabled, `lint-rust` runs:
-
-- `cargo doc` with warnings denied;
-- `cargo clippy` with the generated Clippy configuration; and
-- Whitaker with `whitaker --all`.
-
-The generated Makefile never installs Whitaker; it fails with a clear error
-when the wrapper is missing. Install it yourself with `whitaker-installer` (see
-<https://github.com/leynos/whitaker>) before running local Rust linting.
-
-## Dependency Auditing
-
-Run `make audit` to check generated project dependencies for known
-vulnerabilities. All generated projects run `pip-audit` against the Python
-environment created by `uv sync --group dev`. CI skips `make audit` for
-Dependabot pull requests; a weekly scheduled audit on the default branch is the
-compensating control. Rust-enabled projects also run `cargo audit` from the
-`rust_extension` crate directory.
-
-## Scheduled Mutation Testing
-
-The `.github/workflows/mutation-testing.yml` workflow runs mutation testing
-daily at 09:30 UTC and can also be started manually from GitHub Actions. Adjust
-the generated cron schedule to stagger it against other repositories.
-
-For projects whose minimum Python version is 3.13 or newer, the workflow runs
-mutmut against `rust_cleanup/`. The Python mutation job is omitted for older
-baselines because the shared workflow helpers require Python 3.13 or newer.
-
-## Rust Test Behaviour
-
-Rust-enabled projects use `cargo nextest run` when `cargo-nextest` is
-available. If `cargo-nextest` is not installed, the generated `test` target
-falls back to `cargo test`. Rust documentation tests still run through
-`cargo test --doc`.
-
-If cargo is missing from the local environment, generated Rust test targets
-fail early with a clear error instead of falling through to an unusable `cargo`
-invocation.
-
-## Local GitHub Actions Validation
-
-The generated Makefile supports optional local workflow validation using
-[`act`](https://github.com/nektos/act). When `act` is installed and Docker is
-available, pass `WITH_ACT=1` to the `test` target:
+Command-line settings override TOML settings, which override defaults:
 
 ```bash
-make test WITH_ACT=1
+rust-cleanup --dry-run --normal-stale-after 4h --pressure-stale-after 20m .
 ```
 
-This sets `RUN_ACT_VALIDATION=1` for the pytest invocation, enabling the
-act-based integration tests that run the generated CI workflow locally. Omitting
-`WITH_ACT` (or setting it to `0`) skips act validation; the rest of the test
-suite runs unchanged.
+Unknown TOML keys and malformed values fail before deletion. A missing config
+file uses defaults, including when its path was supplied with `--config`; check
+the file exists when selecting a custom policy.
 
-## Cleaning Local State
+## Understand preserved targets
 
-Run `make clean` to remove local build and cache outputs, including `.venv`,
-`.uv-cache`, `.uv-tools`, Python cache directories, coverage outputs, and Rust
-`target` output when the Rust extension is enabled.
+The cleaner inspects Linux build processes and probes existing Cargo profile
+locks. Immediately before a real deletion it checks build ownership, the lock,
+activity, Cargo evidence, and root containment again. An uncertain process
+snapshot can preserve every target. Output named by Cargo environment variables
+or `--target-dir` is included in ownership detection.
+
+| Protection reason      | Meaning                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `active-build`         | A recognized build process may own the output, or process inspection is uncertain.    |
+| `cargo-lock`           | A Cargo lock is held or cannot be safely probed.                                      |
+| `unknown-activity`     | The newest modification time cannot be established.                                   |
+| `revalidation-changed` | Activity changed after planning.                                                      |
+| `recent-activity`      | Activity is at or newer than the selected cutoff.                                     |
+| `evidence-lost`        | Cargo evidence disappeared, or the path became linked, unresolvable, or out of scope. |
+| `usage-unavailable`    | Initial filesystem usage could not be measured.                                       |
+
+A missing lock does not prove that output is idle. These checks reduce races;
+they cannot prevent a build starting or a directory changing after the last
+check. The tool does not guarantee safety against deliberately concurrent tree
+mutation. Dry runs do not perform the final destructive-path checks.
+
+## Read output and exit statuses
+
+Standard output contains the cleanup summary, planned deletions, and verbose
+target details. Standard error contains filesystem decisions, warnings, and
+JSON events prefixed with `rust-cleanup-event` and a space. `--verbose`
+controls target detail; it does not enable or disable the structured events.
+
+Filesystem diagnostics report the mount, usage before and after, previous and
+selected modes, cutoff, candidate counts, deletion failures, and recovery
+status. In a dry run, deletion counts represent planned removals and recovery
+is reported as skipped. When initial usage is unavailable, zero-valued usage
+fields are placeholders; the warning and `usage-unavailable` reason explain
+that no measurement was obtained.
+
+The structured events contain bounded tokens and counters rather than target
+paths or raw exceptions. Human diagnostics can contain paths and error text.
+Filtering event records does not make the complete stderr stream path-free.
+
+| Status | Meaning                                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------- |
+| `0`    | Invocation completed without a fatal error or reported unresolved recovery; also used for lock contention. |
+| `1`    | Invalid explicit root, incomplete scan, or a fatal cleanup, lock, or state-save error.                     |
+| `2`    | Argument parsing, configuration, or home/configured-root resolution error.                                 |
+| `3`    | A processed pressure or critical plan could not establish recovery below its watermark.                    |
+
+Status 0 does not guarantee a deletion occurred or that every attempted removal
+succeeded. Review the diagnostic `failed` count and warnings. Initial usage
+failure can preserve all candidates while returning 0. A failed usage reread
+after a deletion leaves recovery unresolved and can return 3. Deletions
+completed before an error are not rolled back.
+
+## State, locking, and scheduling
+
+Selected modes persist at `$XDG_STATE_HOME/rust-cleanup/state.json`, falling
+back to `$HOME/.local/state/rust-cleanup/state.json`. Empty or relative
+`XDG_STATE_HOME` values use the fallback. Missing state derives fresh modes;
+malformed state warns and is ignored. State is private mode `0600` after a
+successful replacement. Dry runs do not save state.
+
+The invocation lock is `$XDG_RUNTIME_DIR/rust-cleanup.lock` when that variable
+is non-empty. Otherwise it is `rust-cleanup.lock` beside the state file. Unlike
+config and state overrides, the runtime-directory value is currently used as
+supplied: provide an absolute, private directory. A competing command using the
+same lock path reports contention and returns 0 without a sweep.
+
+The repository does not install a daemon or production systemd units. Its
+systemd timer file under `tests/fixtures/` is an acceptance-test fixture. To
+use an external scheduler:
+
+- Invoke the installed executable by absolute path as the owning account.
+- Set consistent `HOME`, configuration, state, and runtime-directory values
+  for manual and scheduled runs so they share a lock and policy history.
+- Capture both output streams and distinguish status 3 from an ordinary
+  completed run.
+- Preview the selected roots and policy before enabling real deletions.
+
+A dry-run preview is not a reservation: later scheduled runs observe the host
+again and can make different decisions.
+
+## Troubleshoot a run
+
+| Symptom                                    | Next action                                                                                                            |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| No candidates found                        | Use `--verbose`; check effective roots and omission reasons. Bare names and unsupported layouts remain untouched.      |
+| Every candidate is protected               | Inspect the reasons; restricted `/proc` access can make build ownership uncertain.                                     |
+| Status 3                                   | Read the mount's diagnostics, investigate protected output, and free space outside eligible targets if necessary.      |
+| Missing custom configuration seems ignored | Check the path exists; missing files deliberately use defaults.                                                        |
+| Malformed-state warning                    | Inspect the state file and permissions. Moving it aside discards hysteresis history and derives fresh modes next time. |
+| State-save error after cleanup             | Correct directory permissions or storage failure; already removed targets cannot be restored by retrying.              |
+| Initial usage unavailable                  | Investigate the filesystem or mount; all its candidates are preserved until usage can be measured.                     |
+| Deletion failure                           | Inspect the reported target and error; recursive removal can have partially removed its contents.                      |
+
+For implementation constraints and the remaining concurrency interval, read
+[Failure modes and limits](design-doc.md#8-failure-modes-and-limits).
+
+## Command reference
+
+```text
+rust-cleanup [OPTIONS] [PATH ...]
+```
+
+| Option                             | Purpose                                                            |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `--help`, `-h`                     | Display the installed command's help.                              |
+| `--dry-run`, `-n`                  | Report the eligible plan without deleting targets or saving modes. |
+| `--verbose`, `-v`                  | Print per-target details and additional root notices.              |
+| `--config PATH`                    | Select an optional TOML configuration file.                        |
+| `--normal-stale-after DURATION`    | Override normal-mode inactivity.                                   |
+| `--pressure-enter-percent INTEGER` | Override the pressure entry threshold.                             |
+| `--pressure-exit-percent INTEGER`  | Override the pressure recovery threshold.                          |
+| `--pressure-stale-after DURATION`  | Override pressure-mode inactivity.                                 |
+| `--critical-enter-percent INTEGER` | Override the critical entry threshold.                             |
+| `--critical-exit-percent INTEGER`  | Override the critical recovery threshold.                          |
+| `--critical-stale-after DURATION`  | Override critical-mode inactivity.                                 |
+
+Run `rust-cleanup --help` to check the exact surface of the installed version.

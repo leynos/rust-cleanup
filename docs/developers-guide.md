@@ -1,5 +1,8 @@
 # Developer guide
 
+Read the [technical design](design-doc.md) for the implemented architecture and
+its safety boundaries, and the [users' guide](users-guide.md) for operation.
+
 ## Source import
 
 The initial implementation and test suite were imported from
