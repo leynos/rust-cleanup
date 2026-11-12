@@ -12,6 +12,8 @@ accepted = []
 
 [patterns]
 ignore = [
+  # External linker executable, not the English noun.
+  '(?m)^    "mold",$',
   # Inline code spans were masked by the previous dictionary snapshot; kept
   # until the shared dictionary rules on it.
   '`[^`\n]+`',

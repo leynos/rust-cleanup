@@ -1,0 +1,19 @@
+# Optional configuration for rust-cleanup.
+# CLI options override these values; omitted settings use built-in defaults.
+
+[scan]
+# This list replaces the built-in roots. An empty list disables discovery.
+roots = ["~/.lody/repos", "~/Projects"]
+
+[cleanup.normal]
+stale_after = "2h"
+
+[cleanup.pressure]
+enter_percent = 80
+exit_percent = 75
+stale_after = "10m"
+
+[cleanup.critical]
+enter_percent = 95
+exit_percent = 90
+stale_after = "2m"

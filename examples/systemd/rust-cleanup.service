@@ -1,0 +1,9 @@
+[Unit]
+Description=Clean stale Rust target directories across configured scan roots
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+# Match the deployment's login shell and make the cleaner the main process.
+ExecStart=/bin/sh -lc 'exec "%h/.local/bin/rust-cleanup"'

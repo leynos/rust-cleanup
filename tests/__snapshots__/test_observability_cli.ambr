@@ -1,0 +1,89 @@
+# serializer version: 1
+# name: test_cli_emits_the_reviewed_telemetry_transcript
+  list([
+    dict({
+      'lifecycle': 'start',
+      'operation': 'invocation',
+    }),
+    dict({
+      'lifecycle': 'finish',
+      'operation': 'lock',
+      'outcome': 'acquired',
+    }),
+    dict({
+      'lifecycle': 'start',
+      'operation': 'active_build_inspection',
+    }),
+    dict({
+      'duration_ms': '<duration_ms>',
+      'lifecycle': 'finish',
+      'operation': 'active_build_inspection',
+      'outcome': 'clean',
+    }),
+    dict({
+      'lifecycle': 'start',
+      'operation': 'state_load',
+    }),
+    dict({
+      'duration_ms': '<duration_ms>',
+      'lifecycle': 'finish',
+      'operation': 'state_load',
+      'outcome': 'absent',
+    }),
+    dict({
+      'dry_run': True,
+      'lifecycle': 'start',
+      'operation': 'sweep',
+    }),
+    dict({
+      'duration_ms': '<duration_ms>',
+      'failed': 0,
+      'lifecycle': 'finish',
+      'omitted': 0,
+      'operation': 'discovery',
+      'outcome': 'complete',
+      'roots': 1,
+      'scanned': 1,
+    }),
+    dict({
+      'dry_run': True,
+      'lifecycle': 'start',
+      'mode': 'normal',
+      'operation': 'filesystem_decision',
+    }),
+    dict({
+      'deleted': 1,
+      'duration_ms': '<duration_ms>',
+      'eligible': 1,
+      'failed': 0,
+      'lifecycle': 'finish',
+      'mode': 'normal',
+      'operation': 'filesystem_decision',
+      'outcome': 'completed',
+      'protected': 0,
+      'protected_active_build': 0,
+      'protected_changed': 0,
+      'scanned': 1,
+      'unknown_activity': 0,
+    }),
+    dict({
+      'deleted': 1,
+      'dry_run': True,
+      'duration_ms': '<duration_ms>',
+      'filesystems': 1,
+      'lifecycle': 'finish',
+      'omitted': 0,
+      'operation': 'sweep',
+      'outcome': 'completed',
+      'roots': 1,
+      'scanned': 1,
+      'unidentified': 0,
+    }),
+    dict({
+      'duration_ms': '<duration_ms>',
+      'lifecycle': 'finish',
+      'operation': 'invocation',
+      'outcome': 'completed',
+    }),
+  ])
+# ---

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run rust-cleanup every 5min
+
+[Timer]
+OnActiveSec=5min
+OnUnitActiveSec=5min
+Unit=rust-cleanup.service
+
+[Install]
+WantedBy=timers.target

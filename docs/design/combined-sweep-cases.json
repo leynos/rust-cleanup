@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "status": "proposed",
+  "time_model": {
+    "now_seconds": 3456000,
+    "day_seconds": 86400,
+    "whole_target_eligible_when": "mtime_age > ttl",
+    "artefact_eligible_when": "fingerprint_access_age >= ttl"
+  },
+  "ttl_cases": [
+    {
+      "mode": "normal",
+      "mode_ttl_seconds": 7200,
+      "override_seconds": null,
+      "expected_ttl_seconds": 7200
+    },
+    {
+      "mode": "pressure",
+      "mode_ttl_seconds": 600,
+      "override_seconds": null,
+      "expected_ttl_seconds": 600
+    },
+    {
+      "mode": "critical",
+      "mode_ttl_seconds": 120,
+      "override_seconds": null,
+      "expected_ttl_seconds": 120
+    },
+    {
+      "mode": "normal",
+      "mode_ttl_seconds": 14400,
+      "override_seconds": null,
+      "expected_ttl_seconds": 14400
+    },
+    {
+      "mode": "critical",
+      "mode_ttl_seconds": 120,
+      "override_seconds": 604800,
+      "expected_ttl_seconds": 604800
+    }
+  ],
+  "age_cases": [
+    {
+      "name": "recent",
+      "ttl_seconds": 7200,
+      "child_atimes_seconds": [
+        3448799,
+        3448801
+      ],
+      "expected": "keep"
+    },
+    {
+      "name": "at-cutoff",
+      "ttl_seconds": 7200,
+      "child_atimes_seconds": [
+        3448800
+      ],
+      "expected": "eligible"
+    },
+    {
+      "name": "older",
+      "ttl_seconds": 7200,
+      "child_atimes_seconds": [
+        3448799,
+        3440000
+      ],
+      "expected": "eligible"
+    },
+    {
+      "name": "future",
+      "ttl_seconds": 120,
+      "child_atimes_seconds": [
+        3456001
+      ],
+      "expected": "keep"
+    },
+    {
+      "name": "empty-fingerprint",
+      "ttl_seconds": 120,
+      "child_atimes_seconds": [],
+      "expected": "unknown"
+    },
+    {
+      "name": "explicit-seven-days",
+      "ttl_seconds": 604800,
+      "child_atimes_seconds": [
+        2851200
+      ],
+      "expected": "eligible"
+    }
+  ],
+  "name_cases": [
+    {
+      "name": "libwidget-0123456789abcdef.rlib",
+      "expected_hash": "0123456789abcdef"
+    },
+    {
+      "name": "widget-0123456789abcdef.d",
+      "expected_hash": "0123456789abcdef"
+    },
+    {
+      "name": "widget-0123456789abcdef",
+      "expected_hash": "0123456789abcdef"
+    },
+    {
+      "name": "widget",
+      "expected_hash": null
+    },
+    {
+      "name": "widget-01234",
+      "expected_hash": null
+    },
+    {
+      "name": "widget-0123456789abcdeg.rlib",
+      "expected_hash": null
+    },
+    {
+      "name": "widget.release-0123456789abcdef.rlib",
+      "expected_hash": null
+    }
+  ],
+  "plan_cases": [
+    {
+      "name": "whole-suppresses-descendants",
+      "whole_selected": true,
+      "target_guard": "clear",
+      "partial_supported": true,
+      "old_groups": 2,
+      "expected_whole_operations": 1,
+      "expected_group_operations": 0
+    },
+    {
+      "name": "recent-target-old-groups",
+      "whole_selected": false,
+      "target_guard": "clear",
+      "partial_supported": true,
+      "old_groups": 2,
+      "expected_whole_operations": 0,
+      "expected_group_operations": 2
+    },
+    {
+      "name": "busy-target",
+      "whole_selected": false,
+      "target_guard": "busy",
+      "partial_supported": true,
+      "old_groups": 2,
+      "expected_whole_operations": 0,
+      "expected_group_operations": 0
+    },
+    {
+      "name": "unknown-owner",
+      "whole_selected": false,
+      "target_guard": "unknown",
+      "partial_supported": true,
+      "old_groups": 2,
+      "expected_whole_operations": 0,
+      "expected_group_operations": 0
+    },
+    {
+      "name": "invalidated-whole-no-fallback",
+      "whole_selected": true,
+      "target_guard": "changed",
+      "partial_supported": true,
+      "old_groups": 2,
+      "expected_whole_operations": 0,
+      "expected_group_operations": 0
+    },
+    {
+      "name": "unsupported-partial-keeps-whole-policy",
+      "whole_selected": true,
+      "target_guard": "clear",
+      "partial_supported": false,
+      "old_groups": 2,
+      "expected_whole_operations": 1,
+      "expected_group_operations": 0
+    },
+    {
+      "name": "unsupported-retained-target",
+      "whole_selected": false,
+      "target_guard": "clear",
+      "partial_supported": false,
+      "old_groups": 2,
+      "expected_whole_operations": 0,
+      "expected_group_operations": 0
+    }
+  ],
+  "pressure_cases": [
+    {
+      "name": "whole-deletion-recovers",
+      "exit_percent": 75,
+      "usage_readings": [
+        82,
+        74
+      ],
+      "expected_next_action": "stop-before-artefacts"
+    },
+    {
+      "name": "artefact-batch-recovers",
+      "exit_percent": 90,
+      "usage_readings": [
+        97,
+        94,
+        89
+      ],
+      "expected_next_action": "stop-before-next-group"
+    },
+    {
+      "name": "equality-does-not-recover",
+      "exit_percent": 75,
+      "usage_readings": [
+        82,
+        75
+      ],
+      "expected_next_action": "continue-if-safe-work-remains"
+    },
+    {
+      "name": "partial-failure-reread",
+      "exit_percent": 75,
+      "usage_readings": [
+        82,
+        74
+      ],
+      "group_result": "partial-failure",
+      "expected_next_action": "stop-before-next-group"
+    },
+    {
+      "name": "reread-fails",
+      "exit_percent": 75,
+      "usage_readings": [
+        82,
+        null
+      ],
+      "expected_next_action": "stop-unresolved"
+    }
+  ],
+  "concurrency_cases": [
+    {
+      "name": "independent-target-progress",
+      "active_targets": 1,
+      "idle_reclaimable_targets": 1,
+      "expected": "preserve-active-and-reclaim-idle"
+    },
+    {
+      "name": "shared-target-active",
+      "active_targets": 1,
+      "old_groups_in_shared_target": 2,
+      "expected": "preserve-entire-shared-target"
+    },
+    {
+      "name": "build-starts-after-planning",
+      "lease_state": "busy",
+      "expected": "preserve-group-without-waiting"
+    },
+    {
+      "name": "unknown-lock-protocol",
+      "lease_state": "unsupported",
+      "expected": "preserve-group"
+    },
+    {
+      "name": "same-invocation-lock",
+      "cleaner_invocations": 2,
+      "expected": "one-sweep-and-one-successful-noop"
+    },
+    {
+      "name": "cancelled-group",
+      "lease_state": "acquired",
+      "expected": "release-lease-and-report-partial-work-without-rollback"
+    }
+  ]
+}
