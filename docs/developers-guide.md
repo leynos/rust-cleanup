@@ -1,6 +1,77 @@
 # Developer guide
 
+## Source import
+
+The initial implementation and test suite were imported from
+`dev-env-rocky/python/rust_cleanup` at revision
+`8dbf0e665127b9cd8b1dda3a0f48a22e6717abdd`. Runtime modules were copied into
+the existing top-level `rust_cleanup/` package. Explicit status reads preserve
+inspection errors on Python 3.14, whose `Path.exists()` and `Path.is_file()`
+predicates suppress those errors. The imported regression tests cover
+unreadable roots and linked candidates. Explicit type narrowing records the
+validated TOML table and string-list contracts for the pinned type checker. The
+console entry point remains `rust-cleanup = rust_cleanup:main`. This repository
+retains its generated Python 3.14 baseline and quality tooling; the original
+package declared Python 3.12 or newer.
+
+The runtime uses only the Python standard library. Hypothesis supplies the
+imported property tests, Syrupy preserves the CLI snapshot contracts, and
+Jinja2 renders the timer acceptance fixture. Tests remain under top-level
+`tests/`. The subprocess locking test uses this repository's package root. The
+original Ansible timer template is retained under `tests/fixtures/` for the
+timer tests; Ansible provisioning remains in `dev-env-rocky`.
+
+Ordinary tests do not modify systemd units. The host acceptance test requires
+`RUST_CLEANUP_HOST_ACCEPTANCE=1` and an available Linux systemd user manager.
+Run it only on a suitable test host. The cleaner itself relies on Linux process
+inspection and advisory filesystem locks.
+
+See [Repository layout](repository-layout.md) for the imported component
+boundaries and [Users' guide](users-guide.md) for cleanup policy and usage.
+
 This guide explains the contributor workflow for the generated project.
+
+## Static analysis exceptions
+
+Vulture checks the top-level test tree. Its configured name exceptions cover
+pytest plugin registration and the two named autouse fixtures, Python's
+`__call__` protocol, and `RunOptions` fields consumed through keyword expansion
+into `CleanupRun`. These are runtime entry points and typed-dictionary keys;
+removing them changes test behaviour. Other test helpers remain checked.
+
+Subprocess tests use fixed executable arguments without a shell. Their narrow
+Ruff annotations describe why a separate process is necessary to test lock
+contention, or why importing `CompletedProcess` is harmless.
+
+### Import duplication follow-up
+
+The imported test suite contains repeated arrangements for separate safety
+contracts. Its source import retains those scenarios and records reviewed
+families in `tool.duplication_gate.allow`, with a reason, the imported
+locations, and a link to this follow-up. The whole checkout remains in the
+detector's scope with the existing mode and size threshold.
+
+The allowlist format supports path and symbol keys, rather than content hashes.
+A named entry covers that symbol; an unnamed detector location requires a path
+key. Path keys can therefore cover later families wholly within the same listed
+paths. Treat these entries as an import baseline, not as permission to add
+further duplication. Review changes in those paths for repeated logic.
+
+Reduce that baseline in focused refactors after the import:
+
+- Parameterize malformed-state and account-home cases while retaining their
+  distinct corrupt inputs and semantic assertions, then remove their entries.
+- Consolidate repeated CLI isolation and invocation arrangements using the
+  existing `conftest.py` and rendering helpers, then remove matching entries.
+- Reuse telemetry sweep arrangements while keeping lifecycle, timing, and
+  secrecy assertions visible in each test, then remove matching entries.
+- Review filesystem, process, and scan-root families for reusable setup. Keep
+  scenario-specific safety assertions separate, and remove obsolete entries.
+- Retain deliberate API re-exports, explicit imports, and separate telemetry
+  event schemas only where their recorded reasons still apply.
+
+Run `make lint` and `make test` after each refactor. Do not replace these
+entries with directory exclusions or a higher detector threshold.
 
 ## Local workflow
 

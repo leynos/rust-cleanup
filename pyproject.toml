@@ -1,14 +1,20 @@
 [project]
 name = "rust-cleanup"
 version = "0.1.0"
-description = "rust-cleanup package"
+description = "Clean stale Rust target directories that are marked as disposable caches."
 readme = "README.md"
 requires-python = ">=3.14"
 license = { text = "ISC" }
 dependencies = []
 
+[project.scripts]
+rust-cleanup = "rust_cleanup:main"
+
 [dependency-groups]
 dev = [
+    "hypothesis>=6.0,<7",
+    "jinja2>=3.1,<4",
+    "syrupy>=6.0,<7",
     "pytest",
     "interrogate",
     "pip-audit",
@@ -323,7 +329,15 @@ exclude = [".venv/**", ".uv-cache/**", ".uv-tools/**", ".tools/**", ".git/**"]
 # dead-helper detection there. Names collected by pytest are entry points;
 # their function bodies and all other definitions remain checked.
 [tool.vulture]
-ignore_names = ["test_*", "pytestmark"]
+# Pytest discovers fixtures and plugins; Python dispatches callable protocols.
+# RunOptions fields are consumed through **kwargs when constructing CleanupRun.
+# Scope and review policy: docs/developers-guide.md#static-analysis-exceptions
+ignore_names = [
+    "test_*", "pytestmark", "pytest_plugins", "_restore_package_logging",
+    "_isolate_xdg", "__call__", "dry_run", "state_store",
+    "active_build_detector", "usage_getter", "identity_getter", "events",
+    "correlation",
+]
 min_confidence = 60
 
 [tool.mutmut]
@@ -339,11 +353,191 @@ pytest_add_cli_args_test_selection = ["tests/"]
 # Tests automatically killed after seconds elapsed
 timeout = 30
 testpaths = ["tests"]
+markers = [
+    "systemd_user: requires explicit RUST_CLEANUP_HOST_ACCEPTANCE=1 and a running systemd user manager",
+]
 
 [tool.uv]
 package = true
 
 
+[[tool.duplication_gate.allow]]
+members = ["tests/test_observability_secrecy.py", "tests/test_observability_sweep.py"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_secrecy.py:41-52, tests/test_observability_sweep.py:32-43. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["rust_cleanup/__init__.py", "rust_cleanup/cleanup.py"]
+reason = "The public package and historical cleanup facade deliberately re-export overlapping APIs with different export lists. Imported locations: rust_cleanup/__init__.py:6-19, rust_cleanup/cleanup.py:19-32. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_pressure_cleanup.py"
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_pressure_cleanup.py:73-86, tests/test_pressure_cleanup.py:104-117. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_sweep_reporting.py"
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_sweep_reporting.py:103-114, tests/test_sweep_reporting.py:150-161. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cli.py", "tests/test_cli_scan_roots.py"]
+reason = "Independent command invocations retain explicit lock, configuration, capture, and exit-status assertions for distinct CLI failure and precedence cases. Imported locations: tests/test_cli.py:57-104, tests/test_cli_scan_roots.py:23-61. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_observability_sweep.py", "tests/test_sweep_reporting.py"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_sweep.py:265-275, tests/test_sweep_reporting.py:107-117. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_proc_named_outputs.py"
+reason = "Process-discovery cases explicitly construct different process environments and assert which build outputs are protected. Imported locations: tests/test_proc_named_outputs.py:193-197, tests/test_proc_named_outputs.py:218-222. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_observability_secrecy.py"
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_secrecy.py:69-82, tests/test_observability_secrecy.py:40-52. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cleanup_workflow.py", "tests/test_cli.py"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_cleanup_workflow.py:27-33, tests/test_cli.py:133-139. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_observability_sweep.py", "tests/test_timing.py"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_sweep.py:13-21, tests/test_timing.py:13-20. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["rust_cleanup/reclaim.py", "tests/test_reclamation.py"]
+reason = "Explicit imports expose the same domain types to runtime collaborators and their boundary tests; they contain no duplicated runtime algorithm. Imported locations: rust_cleanup/reclaim.py:17-26, tests/test_reclamation.py:31-40. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_observability_secrecy.py::test_state_save_failure_is_recorded_before_the_error_propagates", "tests/test_observability_sweep.py::test_every_paired_span_closes_with_a_bounded_duration", "tests/test_observability_sweep.py::test_reclamation_emits_one_deletion_boundary_pair", "tests/test_observability_sweep.py::test_records_are_aggregate_counters_not_per_candidate_records", "tests/test_observability_sweep.py::test_sweep_emits_start_and_finish_boundaries"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_sweep.py:215-253, tests/test_observability_sweep.py:140-171, tests/test_observability_sweep.py:29-57, tests/test_observability_secrecy.py:137-161, tests/test_observability_sweep.py:284-300. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_safety_regressions.py", "tests/test_sweep_reporting.py"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_safety_regressions.py:119-128, tests/test_sweep_reporting.py:253-262. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_observability_cli.py"
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_cli.py:79-89, tests/test_observability_cli.py:106-116. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cli_omissions.py", "tests/test_cli_rendering.py"]
+reason = "Independent command invocations retain explicit lock, configuration, capture, and exit-status assertions for distinct CLI failure and precedence cases. Imported locations: tests/test_cli_omissions.py:13-20, tests/test_cli_rendering.py:17-24. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_reclamation.py::refuse"
+reason = "Ordered safety-check cases keep their own changed evidence, injected failures, and deletion assertions. Imported locations: tests/test_reclamation.py:112-121, tests/test_reclamation.py:144-153. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_pressure_cleanup.py", "tests/test_sweep_reporting.py"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_sweep_reporting.py:246-268, tests/test_pressure_cleanup.py:163-177. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_sweep_reporting.py::test_dry_run_does_not_write_state_or_delete_targets", "tests/test_sweep_reporting.py::test_dry_run_plans_every_eligible_candidate"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_sweep_reporting.py:120-140, tests/test_sweep_reporting.py:100-117. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_state.py::test_default_state_path_falls_back_to_the_home_directory", "tests/test_state.py::test_default_state_path_ignores_a_relative_or_empty_state_home"]
+reason = "Malformed-state and XDG fallback cases retain separate corrupt inputs and semantic assertions during the source import. Imported locations: tests/test_state.py:235-249, tests/test_state.py:221-231. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_observability_secrecy.py::test_malformed_state_is_recorded_without_its_contents", "tests/test_observability_sweep.py::test_state_records_report_load_and_save_outcomes"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_sweep.py:334-370, tests/test_observability_secrecy.py:115-134. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_reclamation_evidence.py::test_a_candidate_inside_a_root_survives_the_containment_check", "tests/test_reclamation_evidence.py::test_output_replaced_by_a_symlink_is_not_deleted"]
+reason = "Ordered safety-check cases keep their own changed evidence, injected failures, and deletion assertions. Imported locations: tests/test_reclamation_evidence.py:59-81, tests/test_reclamation_evidence.py:104-125. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_cli_scan_roots.py"
+reason = "Independent command invocations retain explicit lock, configuration, capture, and exit-status assertions for distinct CLI failure and precedence cases. Imported locations: tests/test_cli_scan_roots.py:218-220, tests/test_cli_scan_roots.py:233-235. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cargo_discovery.py::test_a_directory_holding_a_repository_is_a_source_tree", "tests/test_cargo_discovery.py::test_a_marked_source_tree_is_still_refused"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_cargo_discovery.py:224-251, tests/test_cargo_discovery.py:210-220. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["rust_cleanup/planning.py", "rust_cleanup/reclamation.py", "tests/conftest.py"]
+reason = "Explicit imports expose the same domain types to runtime collaborators and their boundary tests; they contain no duplicated runtime algorithm. Imported locations: tests/conftest.py:22-31, rust_cleanup/planning.py:40-48, rust_cleanup/reclamation.py:46-54. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_observability_sweep.py"
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_sweep.py:221-231, tests/test_observability_sweep.py:237-247. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_state.py::test_state_entry_of_the_wrong_type_rejects_the_whole_document", "tests/test_state.py::test_state_from_an_unsupported_version_is_malformed", "tests/test_state.py::test_state_without_a_version_is_malformed"]
+reason = "Malformed-state and XDG fallback cases retain separate corrupt inputs and semantic assertions during the source import. Imported locations: tests/test_state.py:69-97, tests/test_state.py:100-126, tests/test_state.py:129-153. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_xdg.py::test_a_relative_home_falls_back_to_the_account_home", "tests/test_xdg.py::test_an_absent_home_falls_back_to_the_account_home"]
+reason = "Account-home cases retain separate absent and relative environment inputs with explicit fallback assertions. Imported locations: tests/test_xdg.py:170-192, tests/test_xdg.py:145-166. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_state.py"
+reason = "Malformed-state and XDG fallback cases retain separate corrupt inputs and semantic assertions during the source import. Imported locations: tests/test_state.py:55-66, tests/test_state.py:112-123. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_scan_root_inspection.py"
+reason = "Scan-root cases explicitly construct different filesystem and configuration boundaries and assert selection or rejection. Imported locations: tests/test_scan_root_inspection.py:30-47, tests/test_scan_root_inspection.py:85-102. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_scan_roots.py"
+reason = "Scan-root cases explicitly construct different filesystem and configuration boundaries and assert selection or rejection. Imported locations: tests/test_scan_roots.py:241-255, tests/test_scan_roots.py:300-312. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_directory_operations.py::test_returns_false_when_cachedir_tag_is_directory", "tests/test_directory_operations.py::test_returns_true_when_cachedir_tag_exists"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_directory_operations.py:52-59, tests/test_directory_operations.py:69-76. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "rust_cleanup/config_loading.py"
+reason = "Pressure and critical construction retain separate TOML keys, diagnostic contexts, and validation order. Imported locations: rust_cleanup/config_loading.py:361-371, rust_cleanup/config_loading.py:372-382. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_directory_operations.py::test_skips_git_directory", "tests/test_directory_operations.py::test_skips_node_modules"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_directory_operations.py:262-271, tests/test_directory_operations.py:273-282. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_cargo_locks.py"
+reason = "Lock-probe cases independently exercise open flags, absent locks, and operating-system lock failures. Imported locations: tests/test_cargo_locks.py:189-230, tests/test_cargo_locks.py:233-250. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cli_scan_home_errors.py", "tests/test_cli_scan_roots.py"]
+reason = "Independent command invocations retain explicit lock, configuration, capture, and exit-status assertions for distinct CLI failure and precedence cases. Imported locations: tests/test_cli_scan_home_errors.py:20-20, tests/test_cli_scan_roots.py:384-384. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_reclamation.py"
+reason = "Ordered safety-check cases keep their own changed evidence, injected failures, and deletion assertions. Imported locations: tests/test_reclamation.py:177-201, tests/test_reclamation.py:164-178. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_xdg.py"
+reason = "Account-home cases retain separate absent and relative environment inputs with explicit fallback assertions. Imported locations: tests/test_xdg.py:159-159, tests/test_xdg.py:185-185. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_directory_operations.py"
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_directory_operations.py:115-136, tests/test_directory_operations.py:132-146. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_observability.py"
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability.py:146-165, tests/test_observability.py:83-94. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_directory_operations.py::test_should_skip_dir_accepts_skip_dirs", "tests/test_directory_operations.py::test_should_skip_dir_rejects_non_skip_dirs"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_directory_operations.py:35-39, tests/test_directory_operations.py:42-46. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cleanup_workflow.py::TestCleanupTargetDirs", "tests/test_cleanup_workflow.py::TestIntegration"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_cleanup_workflow.py:23-102, tests/test_cleanup_workflow.py:106-142. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_proc_active_build.py::test_proc_detector_only_protects_the_process_worktree", "tests/test_proc_active_build.py::test_proc_detector_scopes_an_absolute_command_path"]
+reason = "Process-discovery cases explicitly construct different process environments and assert which build outputs are protected. Imported locations: tests/test_proc_active_build.py:140-159, tests/test_proc_active_build.py:125-134. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_reclamation_evidence.py"
+reason = "Ordered safety-check cases keep their own changed evidence, injected failures, and deletion assertions. Imported locations: tests/test_reclamation_evidence.py:99-125, tests/test_reclamation_evidence.py:38-56. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_cargo_discovery.py"
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_cargo_discovery.py:172-179, tests/test_cargo_discovery.py:200-207. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cli.py", "tests/test_directory_operations.py"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_cli.py:136-139, tests/test_directory_operations.py:94-97. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_sweep_coverage.py::test_recent_activity_is_recorded_with_its_reason", "tests/test_sweep_coverage.py::test_unknown_activity_is_recorded_with_its_reason"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_sweep_coverage.py:200-215, tests/test_sweep_coverage.py:189-197. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_config_and_pressure.py::test_invalid_config_fails_safely", "tests/test_scan_config.py::_write_config"]
+reason = "Scan-root cases explicitly construct different filesystem and configuration boundaries and assert selection or rejection. Imported locations: tests/test_scan_config.py:19-29, tests/test_config_and_pressure.py:151-156. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cli.py::TestMain", "tests/test_cli.py::TestMainFailures"]
+reason = "Independent command invocations retain explicit lock, configuration, capture, and exit-status assertions for distinct CLI failure and precedence cases. Imported locations: tests/test_cli.py:148-390, tests/test_cli.py:108-144. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_cli.py", "tests/test_cli_home_errors.py"]
+reason = "Independent command invocations retain explicit lock, configuration, capture, and exit-status assertions for distinct CLI failure and precedence cases. Imported locations: tests/test_cli_home_errors.py:15-42, tests/test_cli.py:151-173. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_pressure_cleanup.py", "tests/test_safety_regressions.py", "tests/test_sweep_reporting.py"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_pressure_cleanup.py:250-260, tests/test_sweep_reporting.py:185-194, tests/test_safety_regressions.py:201-209. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_observability_secrecy.py", "tests/test_observability_sweep.py", "tests/test_safety_regressions.py", "tests/test_sweep_coverage.py", "tests/test_sweep_reporting.py", "tests/test_timing.py"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_observability_secrecy.py:69-69, tests/test_observability_secrecy.py:92-92, tests/test_observability_secrecy.py:141-141, tests/test_observability_sweep.py:31-31, tests/test_observability_sweep.py:149-149, tests/test_observability_sweep.py:219-219, tests/test_observability_sweep.py:286-286, tests/test_observability_sweep.py:310-310, tests/test_observability_sweep.py:336-336, tests/test_safety_regressions.py:196-196, tests/test_sweep_coverage.py:144-144, tests/test_sweep_coverage.py:191-191, tests/test_sweep_coverage.py:209-209, tests/test_sweep_reporting.py:182-182, tests/test_sweep_reporting.py:214-214, tests/test_sweep_reporting.py:277-277, tests/test_timing.py:93-93. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_filesystem_adapters.py::unidentifiable", "tests/test_safety_regressions.py::failing_usage"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_filesystem_adapters.py:167-181, tests/test_safety_regressions.py:157-171. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_directory_operations.py", "tests/test_observability_sweep.py"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_directory_operations.py:208-216, tests/test_observability_sweep.py:225-232. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_directory_operations.py", "tests/test_observability_secrecy.py"]
+reason = "Telemetry scenarios each construct fresh sinks and sweeps, then assert distinct lifecycle, secrecy, aggregation, or timing contracts. Imported locations: tests/test_directory_operations.py:208-212, tests/test_observability_secrecy.py:46-50. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_proc_active_build.py::test_proc_detector_ignores_unrelated_processes", "tests/test_proc_active_build.py::test_proc_detector_recognizes_build_processes"]
+reason = "Process-discovery cases explicitly construct different process environments and assert which build outputs are protected. Imported locations: tests/test_proc_active_build.py:118-122, tests/test_proc_active_build.py:110-112. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "rust_cleanup/sweep_telemetry.py"
+reason = "Distinct telemetry event schemas explicitly enumerate their bounded counters at each emission boundary. Imported locations: rust_cleanup/sweep_telemetry.py:119-119, rust_cleanup/sweep_telemetry.py:143-143, rust_cleanup/sweep_telemetry.py:173-173. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_safety_regressions.py", "tests/test_state.py"]
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_safety_regressions.py:98-98, tests/test_state.py:225-225. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+members = ["tests/test_scan_config.py", "tests/test_timer_systemd.py"]
+reason = "Scan-root cases explicitly construct different filesystem and configuration boundaries and assert selection or rejection. Imported locations: tests/test_scan_config.py:93-93, tests/test_timer_systemd.py:32-32. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
+[[tool.duplication_gate.allow]]
+unit = "tests/test_filesystem_adapters.py"
+reason = "Filesystem cleanup cases retain explicit cache evidence, pressure inputs, and preservation assertions for distinct safety conditions. Imported locations: tests/test_filesystem_adapters.py:78-78, tests/test_filesystem_adapters.py:89-89. Follow-up: docs/developers-guide.md#import-duplication-follow-up."
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -1,0 +1,14 @@
+# serializer version: 1
+# name: test_main_renders_the_reviewed_transcript
+  dict({
+    'stderr': list([
+      'Error deleting <root>/stuck/target: permission denied',
+    ]),
+    'stdout': list([
+      '  Keeping (protected): <root>/active/target',
+      '  Would clean (mode=pressure): 1 candidate(s)',
+      '  Would delete (mode=pressure): <root>/stale/target',
+      'Would delete 1 of 2 target directories',
+    ]),
+  })
+# ---
