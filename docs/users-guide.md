@@ -83,9 +83,8 @@ daily at 09:30 UTC and can also be started manually from GitHub Actions. Adjust
 the generated cron schedule to stagger it against other repositories.
 
 For projects whose minimum Python version is 3.13 or newer, the workflow runs
-mutmut against `rust_cleanup/`. The Python mutation job is omitted for
-older baselines because the shared workflow helpers require Python 3.13 or
-newer.
+mutmut against `rust_cleanup/`. The Python mutation job is omitted for older
+baselines because the shared workflow helpers require Python 3.13 or newer.
 
 ## Rust Test Behaviour
 
