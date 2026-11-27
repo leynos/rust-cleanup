@@ -18,6 +18,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Queue overlapping publishes; never cancel one. A cancelled publisher
+# abandons both its upload and the ratchet baseline it was writing, while a
+# queued one publishes later and the later push's baseline wins.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   coverage-upload:
     runs-on: ubuntu-latest
