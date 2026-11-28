@@ -31,7 +31,6 @@ jobs:
     permissions:
       contents: read
     env:
-      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN || '' }}
       CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 || '' }}
 
     steps:
@@ -59,11 +58,14 @@ jobs:
           with-ratchet: 'true'
 
 
+      - name: Check CodeScene credential
+        id: codescene-token
+        run: echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
       - name: Upload coverage data to CodeScene
-        if: env.CS_ACCESS_TOKEN != ''
+        if: steps.codescene-token.outputs.available == 'true'
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@18bed1ca49a6de3d8882bd72635a32ae3f023d57
         with:
           format: cobertura
           path: coverage.xml
-          access-token: ${{ env.CS_ACCESS_TOKEN }}
-          installer-checksum: ${{ env.CODESCENE_CLI_SHA256 }}
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}
