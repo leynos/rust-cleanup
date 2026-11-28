@@ -88,9 +88,6 @@ actions under `.github/`.
 - `.github/workflows/build-wheels.yml` is a reusable workflow for extension
   builds. It accepts a Python version and builds wheels across Linux, Windows,
   and macOS architectures via `.github/actions/build-wheels`.
-- `.github/workflows/get-codescene-sha.yml` is manually dispatched. It fetches
-  the CodeScene coverage CLI installer, computes its SHA-256 digest, and writes
-  the result to the `CODESCENE_CLI_SHA256` repository variable.
 
 - `.github/workflows/mutation-testing.yml` runs daily at 09:30 UTC and supports
   manual dispatch. It delegates to reusable workflows from
@@ -117,9 +114,9 @@ while retaining the tool-cache directories; Rust-specific cache configuration
 and tools remain conditional on the extension.
 
 The `CS_ACCESS_TOKEN` secret must be configured when CodeScene coverage upload
-is required. The `CODESCENE_CLI_SHA256` variable should be populated using the
-refresh workflow, so CI can verify the downloaded CodeScene installer before
-upload.
+is required. The main coverage publisher checks for it in a `codescene-token`
+step and skips the upload when it is absent; the uploader pins its own CLI, so
+no digest variable or refresh workflow is needed.
 
 ## Shared spelling configuration
 
